@@ -1,0 +1,297 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// КАНДИДАТЫ
+// ============================================
+
+model Candidate {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // --- Базовые данные (из резюме) ---
+  name                   String
+  role                   CandidateRole
+  grade                  Grade
+  yearsOfExperience      Int?
+  specializations        String[]
+  domains                String[]
+  segment                Segment?
+  platforms              String[]
+  skills                 String[]
+  tools                  String[]
+  location               String?
+  timezone               String?
+  languages              Json?
+  salaryExpectations     String?
+  education              String?
+
+  // --- Флаги опыта ---
+  hasBigtechExperience      Boolean @default(false)
+  hasStudioExperience       Boolean @default(false)
+  hasInternationalExperience Boolean @default(false)
+
+  // --- AI-анализ ---
+  aiSummary              String?
+  aiStrengths            String[]
+  aiConcerns             String[]
+  aiConfidenceScore      Int?
+
+  // --- Глубокий AI-анализ (из портфолио) ---
+  systemThinking         Int?
+  productMaturity        Int?
+  visualStrength         Int?
+  uxStrength             Int?
+  argumentationQuality   Int?
+  metricsImpact          Int?
+  researchDepth          Int?
+
+  // --- Контакты и источник ---
+  telegramContact        String?
+  email                  String?
+  linkedinUrl            String?
+  source                 String?
+
+  // --- Статус ---
+  status                 CandidateStatus @default(NEW)
+
+  // --- Файлы и портфолио ---
+  resumeFileUrl          String?
+  resumeRawText          String?
+  portfolioLinks         String[]
+  portfolioAnalysis      Json?
+
+  // --- Опыт работы ---
+  experiences            Experience[]
+
+  // --- Связи ---
+  matchResults           MatchResult[]
+  shortlistEntries       ShortlistEntry[]
+  notes                  CandidateNote[]
+
+  // --- Ручные корректировки ---
+  manualOverrides        Json?
+}
+
+model Experience {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  company         String
+  role            String
+  startDate       String?
+  endDate         String?
+  duration        String?
+  keyAchievements String[]
+  isBigtech       Boolean @default(false)
+  isStudio        Boolean @default(false)
+}
+
+model CandidateNote {
+  id          String    @id @default(cuid())
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  authorName  String
+  content     String
+  createdAt   DateTime  @default(now())
+}
+
+// ============================================
+// ВАКАНСИИ
+// ============================================
+
+model Vacancy {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // --- Основная информация ---
+  title                  String
+  status                 VacancyStatus   @default(OPEN)
+  clientName             String?
+  clientLead             String?
+  productDescription     String?
+  reasonForHiring        String?
+
+  // --- Параметры позиции ---
+  role                   CandidateRole
+  grade                  Grade
+  designersNeeded        Int             @default(1)
+  employmentType         EmploymentType  @default(FULL_TIME)
+  workFormat             WorkFormat      @default(REMOTE)
+  location               String?
+  timezone               String?
+  salaryRange            String?
+  desiredStartDate       String?
+  duration               String?
+
+  // --- Требования ---
+  keyTasks               String[]
+  requiredSkills         String[]
+  niceToHaveSkills       String[]
+  preferredDomains       String[]
+  requiredTools          String[]
+  needsInternational     Boolean         @default(false)
+  specialCompetencies    String[]
+  redFlags               String[]
+
+  // --- Портрет кандидата ---
+  portfolioReferences    String[]
+  teamComposition        String?
+  decisionMaker          String?
+  hiringStages           Int?
+  testTask               String?
+
+  // --- Веса критериев для матчинга ---
+  scoringCriteria        Json?
+
+  // --- Внутренние заметки ---
+  clientNotes            String?
+  internalNotes          String?
+
+  // --- Приоритеты ---
+  clientPriorities       Json?
+
+  // --- Связи ---
+  matchResults           MatchResult[]
+  shortlist              ShortlistEntry[]
+
+  openedAt               DateTime        @default(now())
+  closedAt               DateTime?
+}
+
+// ============================================
+// МАТЧИНГ
+// ============================================
+
+model MatchResult {
+  id          String    @id @default(cuid())
+  createdAt   DateTime  @default(now())
+
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  vacancyId   String
+  vacancy     Vacancy   @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+
+  // --- Скоринг ---
+  overallScore           Int
+  criteriaScores         Json
+
+  // --- AI-объяснения ---
+  matchExplanation       String
+  strengthsForVacancy    String[]
+  gaps                   String[]
+  clarificationQuestions String[]
+  clarificationMessage   String?
+
+  // --- Ручная корректировка ---
+  manualScoreOverride    Int?
+  humanFeedback          String?
+  feedbackRating         FeedbackRating?
+
+  @@unique([candidateId, vacancyId])
+}
+
+model ShortlistEntry {
+  id          String    @id @default(cuid())
+  createdAt   DateTime  @default(now())
+
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  vacancyId   String
+  vacancy     Vacancy   @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+
+  addedBy     String
+  notes       String?
+  status      ShortlistStatus @default(PENDING)
+
+  @@unique([candidateId, vacancyId])
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum CandidateRole {
+  PRODUCT_DESIGNER
+  UX_DESIGNER
+  UI_DESIGNER
+  COMMUNICATION_DESIGNER
+  UX_RESEARCHER
+  DESIGN_LEAD
+  ART_DIRECTOR
+  BRAND_DESIGNER
+  MOTION_DESIGNER
+  OTHER
+}
+
+enum Grade {
+  JUNIOR
+  MIDDLE
+  MIDDLE_PLUS
+  SENIOR
+  SENIOR_PLUS
+  LEAD
+  HEAD
+}
+
+enum Segment {
+  B2B
+  B2C
+  BOTH
+}
+
+enum CandidateStatus {
+  NEW
+  PARSED
+  PORTFOLIO_ANALYZED
+  ACTIVE
+  IN_PROCESS
+  ARCHIVED
+}
+
+enum VacancyStatus {
+  DRAFT
+  OPEN
+  IN_PROGRESS
+  PAUSED
+  CLOSED
+  FILLED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+}
+
+enum WorkFormat {
+  REMOTE
+  HYBRID
+  OFFICE
+}
+
+enum FeedbackRating {
+  GOOD
+  BAD
+  NEUTRAL
+}
+
+enum ShortlistStatus {
+  PENDING
+  CONTACTED
+  INTERESTED
+  NOT_INTERESTED
+  INTERVIEWING
+  OFFERED
+  HIRED
+  REJECTED
+}

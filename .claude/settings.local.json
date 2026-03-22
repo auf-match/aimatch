@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx prisma:*)",
+      "Bash(pg_isready)",
+      "Bash(brew services:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx shadcn@latest init -d --base-color neutral --css-variables true)",
+      "Bash(npx shadcn@latest init -d)"
+    ]
+  }
+}
