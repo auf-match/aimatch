@@ -180,10 +180,10 @@ export default function BulkUploadPage() {
                   key={row.id}
                   row={row}
                   index={index}
-                  onResolveDirection={(dir) => resolveDirection(row.id, dir)}
-                  onForceCreate={() => resolveForceCreate(row.id)}
+                  onResolveDirection={(dir) => resolveDirection(row.id, row.url, dir)}
+                  onForceCreate={() => resolveForceCreate(row.id, row.url)}
                   onSkip={() => skipRow(row.id)}
-                  onRetry={() => retryRow(row.id)}
+                  onRetry={() => retryRow(row.id, row.url)}
                 />
               ))}
             </div>

@@ -156,12 +156,10 @@ export function useBulkUpload() {
   // ── Resolution ────────────────────────────────────────────────────
 
   const resolveDirection = useCallback(
-    async (rowId: string, direction: "product" | "communication") => {
-      const row = rows.find((r) => r.id === rowId);
-      if (!row) return;
+    async (rowId: string, url: string, direction: "product" | "communication") => {
       updateRow(setRows, rowId, { status: "processing", needsDirection: undefined });
       try {
-        const result = await uploadOne(row.url, { direction });
+        const result = await uploadOne(url, { direction });
         if (result.status === "created") {
           updateRow(setRows, rowId, {
             status: "created",
@@ -178,16 +176,14 @@ export function useBulkUpload() {
         });
       }
     },
-    [rows],
+    [],
   );
 
   const resolveForceCreate = useCallback(
-    async (rowId: string) => {
-      const row = rows.find((r) => r.id === rowId);
-      if (!row) return;
+    async (rowId: string, url: string) => {
       updateRow(setRows, rowId, { status: "processing", duplicate: undefined });
       try {
-        const result = await uploadOne(row.url, { forceCreate: true });
+        const result = await uploadOne(url, { forceCreate: true });
         if (result.status === "created") {
           updateRow(setRows, rowId, {
             status: "created",
@@ -204,7 +200,7 @@ export function useBulkUpload() {
         });
       }
     },
-    [rows],
+    [],
   );
 
   const skipRow = useCallback((rowId: string) => {
@@ -212,12 +208,10 @@ export function useBulkUpload() {
   }, []);
 
   const retryRow = useCallback(
-    async (rowId: string) => {
-      const row = rows.find((r) => r.id === rowId);
-      if (!row) return;
+    async (rowId: string, url: string) => {
       updateRow(setRows, rowId, { status: "processing", error: undefined });
       try {
-        const result = await uploadOne(row.url);
+        const result = await uploadOne(url);
         if (result.status === "created") {
           updateRow(setRows, rowId, {
             status: "created",
@@ -236,7 +230,7 @@ export function useBulkUpload() {
         });
       }
     },
-    [rows],
+    [],
   );
 
   // ── Derived state ─────────────────────────────────────────────────
