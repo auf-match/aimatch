@@ -146,7 +146,7 @@ export default function Home() {
               className="pill pill--outline flex justify-center"
               style={{ height: "40px", fontSize: "13px" }}
             >
-              + Загрузить кандидата
+              + Загрузить кандидатов
             </Link>
             <Link
               href="/vacancies/new"
@@ -154,13 +154,6 @@ export default function Home() {
               style={{ height: "40px", fontSize: "13px" }}
             >
               + Создать вакансию
-            </Link>
-            <Link
-              href="/candidates/upload/bulk"
-              className="pill pill--outline flex justify-center"
-              style={{ height: "40px", fontSize: "13px" }}
-            >
-              + Загрузить пачкой
             </Link>
           </div>
         </div>
