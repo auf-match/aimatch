@@ -33,7 +33,7 @@ export interface BulkRow {
 }
 
 /** Pure helper — exported for unit tests */
-export function isRowValid(row: Pick<BulkRow, "url" | "file" | "status">): boolean {
+export function isRowValid(row: Pick<BulkRow, "url" | "file">): boolean {
   return !!row.file || row.url.trim().length > 0;
 }
 
