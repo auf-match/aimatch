@@ -1,109 +1,45 @@
+// src/app/candidates/upload/page.tsx
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useEffect, useRef } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import Link from "next/link";
-import { ROLE_LABELS, GRADE_LABELS } from "@/lib/constants";
 import { DirectionPicker } from "@/components/candidate-direction-picker";
 import { DuplicateWarning } from "@/components/candidate-duplicate-warning";
-import type { CandidateResult, DuplicateInfo, NeedsDirectionInfo } from "@/components/candidate-upload-types";
-
-type UploadStep = "idle" | "uploading" | "parsing" | "done" | "error" | "duplicate" | "needs-direction";
+import { useBulkUpload, isRowValid } from "./use-bulk-upload";
+import type { BulkRow } from "./use-bulk-upload";
 
 export default function UploadPage() {
-  const [step, setStep] = useState<UploadStep>("idle");
-  const [file, setFile] = useState<File | null>(null);
-  const [portfolioLink, setPortfolioLink] = useState("");
-  const [candidate, setCandidate] = useState<CandidateResult | null>(null);
-  const [error, setError] = useState("");
-  const [isDragging, setIsDragging] = useState(false);
-  const [duplicate, setDuplicate] = useState<DuplicateInfo | null>(null);
-  const [needsDirection, setNeedsDirection] = useState<NeedsDirectionInfo | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const {
+    rows,
+    running,
+    phase,
+    counts,
+    addRow,
+    removeRow,
+    setUrl,
+    setFile,
+    clearFile,
+    start,
+    stop,
+    resolveDirection,
+    resolveForceCreate,
+    skipRow,
+    retryRow,
+  } = useBulkUpload();
 
-  const handleFile = useCallback((f: File) => {
-    const ext = f.name.toLowerCase();
-    if (!ext.endsWith(".pdf") && !ext.endsWith(".docx")) {
-      setError("Поддерживаются только .pdf и .docx файлы");
-      return;
-    }
-    if (f.size > 10 * 1024 * 1024) {
-      setError("Файл слишком большой (макс. 10MB)");
-      return;
-    }
-    setError("");
-    setFile(f);
-  }, []);
-
-  const handleDrop = useCallback(
-    (e: React.DragEvent) => {
+  // Warn on full-page reload during processing (SPA navigation warning is a known limitation)
+  useEffect(() => {
+    if (!running) return;
+    const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
-      setIsDragging(false);
-      const f = e.dataTransfer.files[0];
-      if (f) handleFile(f);
-    },
-    [handleFile],
-  );
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [running]);
 
-  const submit = async (options: { forceCreate?: boolean; direction?: "product" | "communication" } = {}) => {
-    if (!file && !portfolioLink.trim()) return;
-
-    setStep("parsing");
-    setError("");
-    setDuplicate(null);
-    setNeedsDirection(null);
-
-    const formData = new FormData();
-    if (file) formData.append("resume", file);
-    if (portfolioLink.trim()) formData.append("portfolioLink", portfolioLink.trim());
-    if (options.forceCreate) formData.append("forceCreate", "true");
-    if (options.direction) formData.append("direction", options.direction);
-
-    try {
-      const res = await fetch("/api/candidates/upload", {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-
-      if (res.status === 409 && data.duplicate) {
-        setDuplicate(data as DuplicateInfo);
-        setStep("duplicate");
-        return;
-      }
-
-      if (res.status === 409 && data.needsDirection) {
-        setNeedsDirection(data as NeedsDirectionInfo);
-        setStep("needs-direction");
-        return;
-      }
-
-      if (!res.ok) {
-        throw new Error(data.error || `Ошибка ${res.status}`);
-      }
-
-      setCandidate(data);
-      setStep("done");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Произошла ошибка");
-      setStep("error");
-    }
-  };
-
-  const handleSubmit = () => submit({});
-
-  const reset = () => {
-    setStep("idle");
-    setFile(null);
-    setPortfolioLink("");
-    setCandidate(null);
-    setError("");
-    setDuplicate(null);
-    setNeedsDirection(null);
-  };
+  const validCount = rows.filter(isRowValid).length;
 
   return (
     <div className="min-h-screen">
@@ -113,403 +49,405 @@ export default function UploadPage() {
           href="/candidates"
           className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <polyline points="15 18 9 12 15 6" />
           </svg>
           Кандидаты
         </Link>
-        <Link
-          href="/candidates/upload/bulk"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          Загрузить пачкой
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="9 18 15 12 9 6" />
-          </svg>
-        </Link>
+        {running && (
+          <button
+            onClick={stop}
+            className="text-sm text-muted-foreground hover:text-destructive transition-colors"
+          >
+            Стоп
+          </button>
+        )}
       </div>
+
       <div className="mx-auto max-w-2xl px-6 pb-16">
         <div className="mt-8 mb-6">
           <h1 className="text-[28px] font-bold tracking-tight leading-tight">
-            Загрузить кандидата
+            Загрузить кандидатов
           </h1>
           <p className="mt-1 text-[13px] text-muted-foreground">
-            Загрузите резюме, укажите портфолио или и то и другое — AI создаст карточку
+            Добавьте резюме и/или ссылку на портфолио — AI создаст карточку
           </p>
         </div>
 
-        {step === "done" && candidate ? (
-          <CandidateCard candidate={candidate} onReset={reset} />
-        ) : step === "duplicate" && duplicate ? (
-          <DuplicateWarning
-            duplicate={duplicate}
-            onForceCreate={() => submit({ forceCreate: true })}
-            onReset={reset}
-          />
-        ) : step === "needs-direction" && needsDirection ? (
-          <DirectionPicker
-            info={needsDirection}
-            onChoose={(direction) => submit({ direction })}
-            onReset={reset}
-          />
-        ) : (
-          <div className="space-y-6">
-            {/* Drop zone */}
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                setIsDragging(true);
-              }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={handleDrop}
-              onClick={() => inputRef.current?.click()}
-              className={`
-                relative flex cursor-pointer flex-col items-center justify-center
-                rounded-lg border-2 border-dashed px-6 py-16 transition-colors
-                ${isDragging
-                  ? "border-foreground/40 bg-muted/50"
-                  : file
-                    ? "border-foreground/20 bg-muted/30"
-                    : "border-border hover:border-foreground/20 hover:bg-muted/30"
-                }
-              `}
+        {/* ── Phase: INPUT ───────────────────────────────────────────── */}
+        {phase === "input" && (
+          <div>
+            <div className="space-y-3 mb-3">
+              {rows.map((row, index) => (
+                <CandidateInputCard
+                  key={row.id}
+                  row={row}
+                  index={index}
+                  showDelete={rows.length > 1}
+                  onSetUrl={(url) => setUrl(row.id, url)}
+                  onSetFile={(file) => setFile(row.id, file)}
+                  onClearFile={() => clearFile(row.id)}
+                  onRemove={() => removeRow(row.id)}
+                />
+              ))}
+            </div>
+
+            <button
+              onClick={addRow}
+              className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors mb-4"
             >
-              <input
-                ref={inputRef}
-                type="file"
-                accept=".pdf,.docx"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) handleFile(f);
-                }}
-              />
-
-              {file ? (
-                <>
-                  <FileIcon />
-                  <p className="mt-3 text-sm font-medium">{file.name}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {(file.size / 1024 / 1024).toFixed(1)} MB
-                  </p>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setFile(null);
-                    }}
-                    className="mt-3 text-xs text-muted-foreground underline hover:text-foreground"
-                  >
-                    Заменить файл
-                  </button>
-                </>
-              ) : (
-                <>
-                  <UploadIcon />
-                  <p className="mt-3 text-sm font-medium">
-                    Перетащите файл или нажмите для выбора
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    PDF или DOCX, до 10 MB
-                  </p>
-                </>
-              )}
-            </div>
-
-            {/* Divider */}
-            {!file && !portfolioLink.trim() && (
-              <div className="flex items-center gap-3">
-                <div className="flex-1 border-t" />
-                <span className="text-xs text-muted-foreground">или</span>
-                <div className="flex-1 border-t" />
-              </div>
-            )}
-
-            {/* Portfolio link */}
-            <div>
-              <label className="mb-1.5 block text-sm font-medium">
-                Ссылка на портфолио
-                {file && (
-                  <span className="ml-1 font-normal text-muted-foreground">
-                    (опционально)
-                  </span>
-                )}
-              </label>
-              <Input
-                type="url"
-                placeholder="https://..."
-                value={portfolioLink}
-                onChange={(e) => setPortfolioLink(e.target.value)}
-                disabled={step === "parsing" || step === "uploading"}
-              />
-              {!file && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Notion, личный сайт, Behance и др.
-                </p>
-              )}
-            </div>
-
-            {/* Error */}
-            {error && (
-              <div className="rounded-md border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm text-destructive">
-                {error}
-              </div>
-            )}
-
-            {/* Progress */}
-            {(step === "uploading" || step === "parsing") && (
-              <ProgressIndicator step={step} />
-            )}
-
-            {/* Submit */}
-            <div className="flex gap-3">
-              <Button
-                onClick={handleSubmit}
-                disabled={(!file && !portfolioLink.trim()) || step === "uploading" || step === "parsing"}
-                className="flex-1"
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                {step === "uploading" || step === "parsing"
-                  ? "Обработка..."
-                  : file
-                    ? "Загрузить и обработать"
-                    : "Обработать портфолио"}
-              </Button>
-              {step === "error" && (
-                <Button variant="outline" onClick={reset}>
-                  Сбросить
-                </Button>
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              Добавить ещё кандидата
+            </button>
+
+            <Button
+              onClick={start}
+              disabled={validCount === 0}
+              className="w-full"
+              style={{ background: validCount > 0 ? "#F97029" : undefined }}
+            >
+              {validCount > 0
+                ? `Обработать ${validCount} ${pluralCandidates(validCount)}`
+                : "Добавьте файл или ссылку"}
+            </Button>
+          </div>
+        )}
+
+        {/* ── Phase: PROCESSING / DONE ────────────────────────────────── */}
+        {(phase === "processing" || phase === "done") && (
+          <div className="space-y-4">
+            {phase === "processing" && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted-foreground">
+                  Обрабатываем {counts.processed} из {counts.total}…
+                </span>
+                <span className="text-muted-foreground/50 text-xs">
+                  До 3 минут на кандидата
+                </span>
+              </div>
+            )}
+
+            {phase === "done" && (
+              <div className="soft-card flex items-center justify-between gap-4 flex-wrap">
+                <div className="flex gap-4 text-sm">
+                  <span className="text-emerald-600 font-medium">
+                    ✓ Создано {counts.created}
+                  </span>
+                  {counts.review > 0 && (
+                    <span className="text-amber-600 font-medium">
+                      ⚠ На ревью {counts.review}
+                    </span>
+                  )}
+                  {counts.error > 0 && (
+                    <span className="text-destructive font-medium">
+                      ✕ Ошибок {counts.error}
+                    </span>
+                  )}
+                </div>
+                <Link href="/candidates">
+                  <Button variant="outline" size="sm">
+                    К списку кандидатов →
+                  </Button>
+                </Link>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              {rows
+                .map((row, originalIndex) => ({ row, originalIndex }))
+                .filter(({ row }) => row.status !== "idle")
+                .map(({ row, originalIndex }) => (
+                  <CandidateResultRow
+                    key={row.id}
+                    row={row}
+                    index={originalIndex}
+                    onResolveDirection={(dir) => resolveDirection(row.id, row, dir)}
+                    onForceCreate={() => resolveForceCreate(row.id, row)}
+                    onSkip={() => skipRow(row.id)}
+                    onRetry={() => retryRow(row.id, row)}
+                  />
+                ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── CandidateInputCard ─────────────────────────────────────────────────
+
+function CandidateInputCard({
+  row,
+  index,
+  showDelete,
+  onSetUrl,
+  onSetFile,
+  onClearFile,
+  onRemove,
+}: {
+  row: BulkRow;
+  index: number;
+  showDelete: boolean;
+  onSetUrl: (url: string) => void;
+  onSetFile: (file: File) => void;
+  onClearFile: () => void;
+  onRemove: () => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  return (
+    <div className="border border-border rounded-xl p-4 space-y-3">
+      {/* Header row */}
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">
+          Кандидат {index + 1}
+        </span>
+        {showDelete && (
+          <button
+            onClick={onRemove}
+            className="text-muted-foreground/40 hover:text-muted-foreground transition-colors text-xl leading-none"
+            aria-label="Удалить кандидата"
+          >
+            ×
+          </button>
+        )}
+      </div>
+
+      {/* File picker */}
+      <div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.docx"
+          className="hidden"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) onSetFile(f);
+            // Reset value so the same file can be re-selected after clearing
+            e.target.value = "";
+          }}
+        />
+        {row.file ? (
+          <div className="flex items-center gap-2 border border-border rounded-lg px-3 py-2 bg-card">
+            <SmallFileIcon />
+            <span className="text-sm flex-1 truncate">{row.file.name}</span>
+            <span className="text-xs text-muted-foreground shrink-0">
+              {(row.file.size / 1024 / 1024).toFixed(1)} MB
+            </span>
+            <button
+              onClick={onClearFile}
+              className="text-muted-foreground/40 hover:text-muted-foreground transition-colors text-xl leading-none"
+              aria-label="Убрать файл"
+            >
+              ×
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="w-full flex items-center gap-2 border border-dashed border-border rounded-lg px-3 py-2.5 text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+          >
+            <SmallFileIcon />
+            <span className="text-sm">Прикрепить резюме .pdf .docx</span>
+          </button>
+        )}
+        {row.fileError && (
+          <p className="mt-1 text-xs text-destructive">{row.fileError}</p>
+        )}
+      </div>
+
+      {/* Portfolio URL */}
+      <Input
+        type="url"
+        placeholder="Ссылка на портфолио..."
+        value={row.url}
+        onChange={(e) => onSetUrl(e.target.value)}
+      />
+    </div>
+  );
+}
+
+// ── CandidateResultRow ─────────────────────────────────────────────────
+
+function CandidateResultRow({
+  row,
+  index,
+  onResolveDirection,
+  onForceCreate,
+  onSkip,
+  onRetry,
+}: {
+  row: BulkRow;
+  index: number;
+  onResolveDirection: (dir: "product" | "communication") => void;
+  onForceCreate: () => void;
+  onSkip: () => void;
+  onRetry: () => void;
+}) {
+  // Subheading: show url if available; filename if file-only; never an empty string
+  const trimmedUrl = row.url.trim();
+  const subheading = trimmedUrl
+    ? row.file
+      ? `${row.file.name} · ${trimmedUrl}`
+      : trimmedUrl
+    : row.file
+      ? row.file.name
+      : "";
+
+  return (
+    <div className="soft-card space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2 mb-0.5">
+            <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">
+              Кандидат {index + 1}
+            </span>
+            <StatusBadge status={row.status} />
+          </div>
+          {subheading && (
+            <p className="text-sm text-muted-foreground truncate">{subheading}</p>
+          )}
+          {row.status === "created" && row.candidate && (
+            <div className="mt-0.5 flex items-center gap-2 flex-wrap">
+              <Link
+                href={`/candidates/${row.candidate.id}`}
+                className="text-sm text-[#F97029] hover:underline font-medium"
+              >
+                {row.candidate.name}
+              </Link>
+              {row.noPortfolioAnalysis && (
+                <span className="text-xs text-muted-foreground/60">
+                  · без анализа портфолио
+                </span>
               )}
             </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ProgressIndicator({ step }: { step: "uploading" | "parsing" }) {
-  const steps = [
-    { key: "uploading", label: "Загрузка и скрейпинг портфолио" },
-    { key: "parsing", label: "AI анализирует данные" },
-  ];
-
-  return (
-    <div className="space-y-3">
-      {steps.map((s) => {
-        const isActive = s.key === step;
-        const isDone =
-          (s.key === "uploading" && step === "parsing");
-
-        return (
-          <div key={s.key} className="flex items-center gap-3 text-sm">
-            <div
-              className={`h-2 w-2 rounded-full ${
-                isDone
-                  ? "bg-foreground"
-                  : isActive
-                    ? "bg-foreground animate-pulse"
-                    : "bg-border"
-              }`}
-            />
-            <span
-              className={
-                isDone || isActive ? "text-foreground" : "text-muted-foreground"
-              }
-            >
-              {s.label}
-              {isActive && "..."}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function CandidateCard({
-  candidate,
-  onReset,
-}: {
-  candidate: CandidateResult;
-  onReset: () => void;
-}) {
-  return (
-    <div className="space-y-6">
-      {/* Success header */}
-      <div className="rounded-md border border-foreground/10 bg-muted/30 px-4 py-3 text-sm">
-        Кандидат успешно добавлен
-        {candidate.aiConfidenceScore != null && (
-          <span className="ml-1 text-muted-foreground">
-            &middot; уверенность парсинга {candidate.aiConfidenceScore}%
-          </span>
-        )}
-      </div>
-
-      {/* Main info */}
-      <Card>
-        <CardContent className="pt-6 space-y-4">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-lg font-semibold">{candidate.name}</h2>
-              <p className="text-sm text-muted-foreground">
-                {ROLE_LABELS[candidate.role] || candidate.role}
-              </p>
-            </div>
-            <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">{GRADE_LABELS[candidate.grade] || candidate.grade}</span>
-          </div>
-
-          {candidate.aiSummary && (
-            <p className="text-sm leading-relaxed">{candidate.aiSummary}</p>
           )}
-
-          <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm">
-            {candidate.yearsOfExperience != null && (
-              <InfoRow label="Опыт" value={`${candidate.yearsOfExperience} лет`} />
-            )}
-            {candidate.location && <InfoRow label="Локация" value={candidate.location} />}
-            {candidate.segment && <InfoRow label="Сегмент" value={candidate.segment} />}
-            {candidate.email && <InfoRow label="Email" value={candidate.email} />}
-            {candidate.telegramContact && (
-              <InfoRow label="Telegram" value={candidate.telegramContact} />
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Skills & tools */}
-      {(candidate.skills.length > 0 || candidate.tools.length > 0) && (
-        <Card>
-          <CardContent className="pt-6 space-y-3">
-            {candidate.skills.length > 0 && (
-              <div>
-                <p className="t-eyebrow mb-1.5 opacity-70">Навыки</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {candidate.skills.map((s) => (
-                    <span key={s} className="inline-flex items-center rounded-full bg-card [box-shadow:var(--shadow-card)] px-2.5 py-0.5 text-xs font-normal text-foreground">{s}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-            {candidate.tools.length > 0 && (
-              <div>
-                <p className="t-eyebrow mb-1.5 opacity-70">Инструменты</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {candidate.tools.map((t) => (
-                    <span key={t} className="inline-flex items-center rounded-full border border-border bg-transparent px-2.5 py-0.5 text-xs font-normal text-foreground">{t}</span>
-                  ))}
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* AI strengths & concerns */}
-      {(candidate.aiStrengths.length > 0 || candidate.aiConcerns.length > 0) && (
-        <Card>
-          <CardContent className="pt-6 space-y-3">
-            {candidate.aiStrengths.length > 0 && (
-              <div>
-                <p className="t-eyebrow mb-1.5 opacity-70">Сильные стороны</p>
-                <ul className="space-y-1 text-sm">
-                  {candidate.aiStrengths.map((s, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-foreground/40" />
-                      {s}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-            {candidate.aiConcerns.length > 0 && (
-              <div>
-                <p className="t-eyebrow mb-1.5 opacity-70">Риски</p>
-                <ul className="space-y-1 text-sm">
-                  {candidate.aiConcerns.map((c, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-destructive/60" />
-                      {c}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Experience */}
-      {candidate.experiences.length > 0 && (
-        <Card>
-          <CardContent className="pt-6 space-y-4">
-            <p className="t-eyebrow mb-1 opacity-70">Опыт работы</p>
-            {candidate.experiences.map((exp) => (
-              <div key={exp.id} className="border-t pt-3 first:border-0 first:pt-0">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-medium">{exp.company}</p>
-                    <p className="text-xs text-muted-foreground">{exp.role}</p>
-                  </div>
-                  <div className="flex gap-1">
-                    {exp.isBigtech && <span className="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">BigTech</span>}
-                    {exp.isStudio && <span className="inline-flex items-center rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-secondary-foreground">Studio</span>}
-                  </div>
-                </div>
-                {exp.duration && (
-                  <p className="mt-0.5 text-xs text-muted-foreground">{exp.duration}</p>
-                )}
-                {exp.keyAchievements.length > 0 && (
-                  <ul className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
-                    {exp.keyAchievements.map((a, i) => (
-                      <li key={i}>&middot; {a}</li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Actions */}
-      <div className="flex gap-3">
-        <Link href={`/candidates/${candidate.id}`} className="flex-1">
-          <Button className="w-full">Открыть карточку</Button>
-        </Link>
-        <Button variant="outline" onClick={onReset}>
-          Загрузить ещё
-        </Button>
+          {row.status === "error" && row.error && (
+            <p className="mt-0.5 text-xs text-destructive">{row.error}</p>
+          )}
+        </div>
       </div>
+
+      {/* Inline review: needs-direction */}
+      {row.status === "needs-direction" && row.needsDirection && (
+        <DirectionPicker
+          info={row.needsDirection}
+          onChoose={onResolveDirection}
+          onReset={onSkip}
+          resetLabel="Пропустить"
+        />
+      )}
+
+      {/* Inline review: duplicate */}
+      {row.status === "duplicate" && row.duplicate && (
+        <DuplicateWarning
+          duplicate={row.duplicate}
+          onForceCreate={onForceCreate}
+          onReset={onSkip}
+          resetLabel="Пропустить"
+        />
+      )}
+
+      {/* Retry on error */}
+      {row.status === "error" && (
+        <button
+          onClick={onRetry}
+          className="text-sm text-muted-foreground hover:text-foreground underline underline-offset-2 transition-colors"
+        >
+          Повторить
+        </button>
+      )}
     </div>
   );
 }
 
+// ── StatusBadge ────────────────────────────────────────────────────────
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+const STATUS_LABELS: Record<string, string> = {
+  idle: "ожидает",
+  pending: "ожидает",
+  processing: "обрабатывается",
+  created: "создан",
+  "needs-direction": "на ревью",
+  duplicate: "на ревью",
+  skipped: "пропущен",
+  error: "ошибка",
+};
+
+const STATUS_COLORS: Record<string, string> = {
+  idle: "bg-muted text-muted-foreground",
+  pending: "bg-muted text-muted-foreground",
+  processing: "bg-blue-100 text-blue-700",
+  created: "bg-[var(--tint-green-bg)] text-[var(--tint-green-fg)]",
+  "needs-direction": "bg-amber-100 text-amber-700",
+  duplicate: "bg-amber-100 text-amber-700",
+  skipped: "bg-muted text-muted-foreground",
+  error: "bg-red-100 text-red-600",
+};
+
+function StatusBadge({ status }: { status: string }) {
   return (
-    <div>
-      <span className="text-muted-foreground">{label}: </span>
-      <span>{value}</span>
-    </div>
+    <span
+      className={`shrink-0 inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[status] ?? "bg-muted text-muted-foreground"}`}
+    >
+      {status === "processing" && (
+        <span className="mr-1.5 h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+      )}
+      {STATUS_LABELS[status] ?? status}
+    </span>
   );
 }
 
-function UploadIcon() {
-  return (
-    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground/60">
-      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-      <polyline points="17 8 12 3 7 8" />
-      <line x1="12" y1="3" x2="12" y2="15" />
-    </svg>
-  );
-}
+// ── Icons ──────────────────────────────────────────────────────────────
 
-function FileIcon() {
+function SmallFileIcon() {
   return (
-    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="text-muted-foreground/60">
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className="shrink-0 text-muted-foreground"
+    >
       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
       <polyline points="14 2 14 8 20 8" />
-      <line x1="16" y1="13" x2="8" y2="13" />
-      <line x1="16" y1="17" x2="8" y2="17" />
     </svg>
   );
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────
+
+function pluralCandidates(n: number): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 19) return "кандидатов";
+  if (mod10 === 1) return "кандидата";
+  if (mod10 >= 2 && mod10 <= 4) return "кандидата";
+  return "кандидатов";
 }
