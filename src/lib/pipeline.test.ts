@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { ShortlistStatus, PipelineStage } from "@prisma/client";
 import {
   daysInStage,
   groupPipelineByStage,
@@ -20,12 +21,12 @@ describe("daysInStage", () => {
 
 describe("groupPipelineByStage", () => {
   it("groups entries by stage and keeps all stages present and ordered", () => {
-    const entries = [
+    const entries: { stage: PipelineStage; id: string }[] = [
       { stage: "DL_APPROVED", id: "a" },
       { stage: "OFFER", id: "b" },
       { stage: "DL_APPROVED", id: "c" },
     ];
-    const grouped = groupPipelineByStage(entries as any);
+    const grouped = groupPipelineByStage(entries);
     expect(Object.keys(grouped)).toEqual(PIPELINE_STAGE_ORDER);
     expect(grouped.DL_APPROVED.map((e) => e.id)).toEqual(["a", "c"]);
     expect(grouped.OFFER.map((e) => e.id)).toEqual(["b"]);
@@ -35,13 +36,13 @@ describe("groupPipelineByStage", () => {
 
 describe("mapShortlistStatusToStage", () => {
   it("maps all 8 ShortlistStatus values", () => {
-    expect(mapShortlistStatusToStage("PENDING" as any)).toBe("DL_APPROVED");
-    expect(mapShortlistStatusToStage("CONTACTED" as any)).toBe("DL_APPROVED");
-    expect(mapShortlistStatusToStage("INTERESTED" as any)).toBe("DL_APPROVED");
-    expect(mapShortlistStatusToStage("NOT_INTERESTED" as any)).toBe("REJECTED");
-    expect(mapShortlistStatusToStage("INTERVIEWING" as any)).toBe("CLIENT_INTERVIEW");
-    expect(mapShortlistStatusToStage("OFFERED" as any)).toBe("OFFER");
-    expect(mapShortlistStatusToStage("HIRED" as any)).toBe("HIRED");
-    expect(mapShortlistStatusToStage("REJECTED" as any)).toBe("REJECTED");
+    expect(mapShortlistStatusToStage("PENDING" as ShortlistStatus)).toBe("DL_APPROVED");
+    expect(mapShortlistStatusToStage("CONTACTED" as ShortlistStatus)).toBe("DL_APPROVED");
+    expect(mapShortlistStatusToStage("INTERESTED" as ShortlistStatus)).toBe("DL_APPROVED");
+    expect(mapShortlistStatusToStage("NOT_INTERESTED" as ShortlistStatus)).toBe("REJECTED");
+    expect(mapShortlistStatusToStage("INTERVIEWING" as ShortlistStatus)).toBe("CLIENT_INTERVIEW");
+    expect(mapShortlistStatusToStage("OFFERED" as ShortlistStatus)).toBe("OFFER");
+    expect(mapShortlistStatusToStage("HIRED" as ShortlistStatus)).toBe("HIRED");
+    expect(mapShortlistStatusToStage("REJECTED" as ShortlistStatus)).toBe("REJECTED");
   });
 });
