@@ -84,7 +84,6 @@ model Candidate {
 
   // --- Связи ---
   matchResults           MatchResult[]
-  shortlistEntries       ShortlistEntry[]
   notes                  CandidateNote[]
   screeningResults       ScreeningResult[]
   detailedScores         DetailedScore[]
@@ -186,7 +185,6 @@ model Vacancy {
 
   // --- Связи ---
   matchResults           MatchResult[]
-  shortlist              ShortlistEntry[]
   screeningResults       ScreeningResult[]
   detailedScores         DetailedScore[]
   pipelines              Pipeline[]
@@ -223,22 +221,6 @@ model MatchResult {
   manualScoreOverride    Int?
   humanFeedback          String?
   feedbackRating         FeedbackRating?
-
-  @@unique([candidateId, vacancyId])
-}
-
-model ShortlistEntry {
-  id          String    @id @default(cuid())
-  createdAt   DateTime  @default(now())
-
-  candidateId String
-  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  vacancyId   String
-  vacancy     Vacancy   @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
-
-  addedBy     String
-  notes       String?
-  status      ShortlistStatus @default(PENDING)
 
   @@unique([candidateId, vacancyId])
 }
@@ -392,17 +374,6 @@ enum FeedbackRating {
   GOOD
   BAD
   NEUTRAL
-}
-
-enum ShortlistStatus {
-  PENDING
-  CONTACTED
-  INTERESTED
-  NOT_INTERESTED
-  INTERVIEWING
-  OFFERED
-  HIRED
-  REJECTED
 }
 
 enum ScreeningDecision {

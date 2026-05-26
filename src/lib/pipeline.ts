@@ -1,4 +1,4 @@
-import type { PipelineStage, TriageStatus, ShortlistStatus } from "@prisma/client";
+import type { PipelineStage, TriageStatus } from "@prisma/client";
 
 export const PIPELINE_STAGE_ORDER: PipelineStage[] = [
   "DL_APPROVED",
@@ -84,21 +84,3 @@ export function groupPipelineByStage<T extends { stage: PipelineStage }>(
   return grouped;
 }
 
-/** Маппинг старого ShortlistStatus в PipelineStage (для миграции данных). */
-export function mapShortlistStatusToStage(status: ShortlistStatus): PipelineStage {
-  switch (status) {
-    case "PENDING":
-    case "CONTACTED":
-    case "INTERESTED":
-      return "DL_APPROVED";
-    case "NOT_INTERESTED":
-    case "REJECTED":
-      return "REJECTED";
-    case "INTERVIEWING":
-      return "CLIENT_INTERVIEW";
-    case "OFFERED":
-      return "OFFER";
-    case "HIRED":
-      return "HIRED";
-  }
-}

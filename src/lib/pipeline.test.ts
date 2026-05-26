@@ -1,9 +1,8 @@
 import { describe, it, expect } from "vitest";
-import type { ShortlistStatus, PipelineStage } from "@prisma/client";
+import type { PipelineStage } from "@prisma/client";
 import {
   daysInStage,
   groupPipelineByStage,
-  mapShortlistStatusToStage,
   PIPELINE_STAGE_ORDER,
 } from "./pipeline";
 
@@ -34,15 +33,3 @@ describe("groupPipelineByStage", () => {
   });
 });
 
-describe("mapShortlistStatusToStage", () => {
-  it("maps all 8 ShortlistStatus values", () => {
-    expect(mapShortlistStatusToStage("PENDING" as ShortlistStatus)).toBe("DL_APPROVED");
-    expect(mapShortlistStatusToStage("CONTACTED" as ShortlistStatus)).toBe("DL_APPROVED");
-    expect(mapShortlistStatusToStage("INTERESTED" as ShortlistStatus)).toBe("DL_APPROVED");
-    expect(mapShortlistStatusToStage("NOT_INTERESTED" as ShortlistStatus)).toBe("REJECTED");
-    expect(mapShortlistStatusToStage("INTERVIEWING" as ShortlistStatus)).toBe("CLIENT_INTERVIEW");
-    expect(mapShortlistStatusToStage("OFFERED" as ShortlistStatus)).toBe("OFFER");
-    expect(mapShortlistStatusToStage("HIRED" as ShortlistStatus)).toBe("HIRED");
-    expect(mapShortlistStatusToStage("REJECTED" as ShortlistStatus)).toBe("REJECTED");
-  });
-});

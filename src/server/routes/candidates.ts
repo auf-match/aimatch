@@ -83,8 +83,8 @@ router.get("/api/candidates/:id", async (req: Request, res: Response): Promise<v
           include: { vacancy: { select: { id: true, title: true, status: true } } },
           orderBy: { overallScore: "desc" },
         },
-        shortlistEntries: {
-          include: { vacancy: { select: { id: true, title: true } } },
+        pipelines: {
+          include: { vacancy: true },
         },
       },
     });

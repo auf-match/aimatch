@@ -13,6 +13,7 @@ import {
   EMPLOYMENT_TYPE_LABELS,
   WORK_FORMAT_LABELS,
 } from "@/lib/constants";
+import { PIPELINE_STAGE_LABELS, getPipelineActor } from "@/lib/pipeline";
 import PipelineBoard from "./pipeline-board";
 
 // ── Types ───────────────────────────────────────────────────────────
@@ -53,10 +54,9 @@ interface MatchResult {
   humanFeedback: string | null;
 }
 
-interface ShortlistEntry {
-  id: string;
+interface PipelineEntry {
   candidateId: string;
-  status: string;
+  stage: string;
   candidate: { id: string; name: string; role: string; grade: string };
 }
 
@@ -136,8 +136,8 @@ interface VacancyDetail {
   clientNotes: string | null;
   internalNotes: string | null;
   matchResults: MatchResult[];
-  shortlist: ShortlistEntry[];
-  _count: { matchResults: number; shortlist: number };
+  pipelines: PipelineEntry[];
+  _count: { matchResults: number; pipelines: number };
   createdAt: string;
 }
 
@@ -189,8 +189,8 @@ export default function VacancyPage({
   const [matching, setMatching] = useState(false);
   const [matchError, setMatchError] = useState("");
   const [expandedMatch, setExpandedMatch] = useState<string | null>(null);
-  const [shortlistIds, setShortlistIds] = useState<Set<string>>(new Set());
-  const [shortlistLoading, setShortlistLoading] = useState<string | null>(null);
+  const [pipelineIds, setPipelineIds] = useState<Map<string, string>>(new Map());
+  const [approveLoading, setApproveLoading] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [matchingDone, setMatchingDone] = useState(false);
   const [softening, setSoftening] = useState(false);
@@ -213,10 +213,10 @@ export default function VacancyPage({
       if (!res.ok) throw new Error("Не найдена");
       const data = await res.json();
       setVacancy(data);
-      const ids = new Set<string>(
-        (data.shortlist || []).map((s: ShortlistEntry) => s.candidateId)
+      const ids = new Map<string, string>(
+        (data.pipelines || []).map((p: PipelineEntry) => [p.candidateId, p.stage])
       );
-      setShortlistIds(ids);
+      setPipelineIds(ids);
     } catch {
       setError("Вакансия не найдена");
     } finally {
@@ -271,32 +271,23 @@ export default function VacancyPage({
     }
   };
 
-  const handleAddToShortlist = async (candidateId: string) => {
-    setShortlistLoading(candidateId);
+  const handleApprove = async (candidateId: string) => {
+    setApproveLoading(candidateId);
     try {
-      if (shortlistIds.has(candidateId)) {
-        await fetch(`/api/vacancies/${id}/shortlist`, {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ candidateId }),
-        });
-        setShortlistIds((prev) => {
-          const next = new Set(prev);
-          next.delete(candidateId);
-          return next;
-        });
-      } else {
-        await fetch(`/api/vacancies/${id}/shortlist`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ candidateId, addedBy: "Рекрутер" }),
-        });
-        setShortlistIds((prev) => new Set(prev).add(candidateId));
+      const actor = getPipelineActor();
+      const res = await fetch(`/api/vacancies/${id}/pipeline`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidateId, actor }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPipelineIds((prev) => new Map(prev).set(candidateId, data.stage ?? "DL_APPROVED"));
       }
     } catch {
       // silent
     } finally {
-      setShortlistLoading(null);
+      setApproveLoading(null);
     }
   };
 
@@ -777,7 +768,7 @@ export default function VacancyPage({
                 {hasResults && (
                   <p className="text-xs text-muted-foreground -mt-2">
                     {vacancy._count.matchResults} кандидатов
-                    {vacancy._count.shortlist > 0 && ` · ${vacancy._count.shortlist} в шорт-листе`}
+                    {vacancy._count.pipelines > 0 && ` · ${vacancy._count.pipelines} в воронке`}
                   </p>
                 )}
               </div>
@@ -898,13 +889,14 @@ export default function VacancyPage({
                 {vacancy.matchResults.map((m, idx) => {
                   const isExpanded = expandedMatch === m.id;
                   const criteriaScores = (m.criteriaScores || []) as CriterionScore[];
-                  const inShortlist = shortlistIds.has(m.candidate.id);
+                  const pipelineStage = pipelineIds.get(m.candidate.id);
+                  const inPipeline = pipelineStage !== undefined;
 
                   return (
                     <div
                       key={m.id}
                       className={`rounded-lg border overflow-hidden transition-colors ${
-                        inShortlist ? "border-emerald-300 bg-emerald-50/30 dark:border-emerald-800 dark:bg-emerald-950/20" : ""
+                        inPipeline ? "border-emerald-300 bg-emerald-50/30 dark:border-emerald-800 dark:bg-emerald-950/20" : ""
                       }`}
                     >
                       {/* Summary row */}
@@ -930,9 +922,9 @@ export default function VacancyPage({
                             >
                               {m.candidate.name}
                             </Link>
-                            {inShortlist && (
+                            {inPipeline && (
                               <span className="text-[10px] text-emerald-600 font-medium">
-                                В шорт-листе
+                                {PIPELINE_STAGE_LABELS[pipelineStage as keyof typeof PIPELINE_STAGE_LABELS] ?? "В воронке"}
                               </span>
                             )}
                             {m.feedbackRating === "GOOD" && <span title="Подходит" className="text-sm">👍</span>}
@@ -958,22 +950,24 @@ export default function VacancyPage({
                       {isExpanded && (
                         <div className="border-t px-4 py-4 space-y-4 bg-muted/5">
                           <div className="flex items-center gap-2">
-                            <Button
-                              size="sm"
-                              variant={inShortlist ? "outline" : "default"}
-                              disabled={shortlistLoading === m.candidate.id}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleAddToShortlist(m.candidate.id);
-                              }}
-                              className="text-xs"
-                            >
-                              {shortlistLoading === m.candidate.id
-                                ? "..."
-                                : inShortlist
-                                  ? "Убрать из шорт-листа"
-                                  : "Добавить в шорт-лист"}
-                            </Button>
+                            {inPipeline ? (
+                              <span className="inline-flex items-center rounded-md bg-emerald-100 dark:bg-emerald-900/40 px-2.5 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                                В воронке · {PIPELINE_STAGE_LABELS[pipelineStage as keyof typeof PIPELINE_STAGE_LABELS] ?? pipelineStage}
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="default"
+                                disabled={approveLoading === m.candidate.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleApprove(m.candidate.id);
+                                }}
+                                className="text-xs"
+                              >
+                                {approveLoading === m.candidate.id ? "..." : "Одобрить"}
+                              </Button>
+                            )}
                             <Link
                               href={`/candidates/${m.candidate.id}`}
                               onClick={(e) => e.stopPropagation()}
