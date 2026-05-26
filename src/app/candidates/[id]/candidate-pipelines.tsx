@@ -10,6 +10,7 @@ import {
   TRIAGE_STATUS_LABELS,
   TRIAGE_STATUS_COLORS,
   daysInStage,
+  getPipelineActor,
 } from "@/lib/pipeline";
 import { GRADE_LABELS } from "@/lib/constants";
 import type { PipelineStage, TriageStatus } from "@prisma/client";
@@ -52,18 +53,6 @@ interface VacancyOption {
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
-function getActor(): string {
-  if (typeof window === "undefined") return "Система";
-  let actor = localStorage.getItem("pipeline_actor");
-  if (!actor) {
-    actor =
-      prompt("Как вас зовут? (будет записано как автор действия)", "Система") ??
-      "Система";
-    localStorage.setItem("pipeline_actor", actor);
-  }
-  return actor;
-}
-
 function formatDaysAgo(createdAt: string): string {
   const days = daysInStage(new Date(createdAt), new Date());
   if (days === 0) return "сегодня";
@@ -80,7 +69,7 @@ interface MoveMenuProps {
   onClose: () => void;
 }
 
-function MoveMenu({ anchorRect, onMove, onClose }: MoveMenuProps) {
+function MoveMenu({ anchorRect, currentStage, onMove, onClose }: MoveMenuProps) {
   const popupRef = useRef<HTMLDivElement>(null);
   const popupWidth = 240;
   let left = anchorRect.left;
@@ -108,7 +97,7 @@ function MoveMenu({ anchorRect, onMove, onClose }: MoveMenuProps) {
         <div className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Переместить на этап
         </div>
-        {PIPELINE_STAGE_ORDER.map((stage) => (
+        {PIPELINE_STAGE_ORDER.filter((s) => s !== currentStage).map((stage) => (
           <button
             key={stage}
             className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-foreground hover:bg-muted/60 transition-colors"
@@ -175,7 +164,7 @@ function VacancyPicker({
           setVacancies(list);
         }
       })
-      .catch(() => {})
+      .catch((err) => { console.error("vacancies fetch failed:", err); })
       .finally(() => {
         if (active) setLoading(false);
       });
@@ -248,8 +237,8 @@ interface TriageChipProps {
 }
 
 function TriageChip({ status }: TriageChipProps) {
-  const color = TRIAGE_STATUS_COLORS[status];
-  const label = TRIAGE_STATUS_LABELS[status];
+  const color = TRIAGE_STATUS_COLORS[status] ?? "#3f3f46";
+  const label = TRIAGE_STATUS_LABELS[status] ?? status;
   return (
     <span
       className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[12px] font-semibold"
@@ -317,7 +306,7 @@ export default function CandidatePipelines({
       .then((data: VacancyPipelineEntry[]) => {
         if (active) setPipelines(data);
       })
-      .catch(() => {})
+      .catch((err) => { console.error("pipelines fetch failed:", err); })
       .finally(() => {
         if (active) setPipelinesLoading(false);
       });
@@ -328,7 +317,7 @@ export default function CandidatePipelines({
 
   // ── Triage change ──
   const handleTriageChange = async (newStatus: TriageStatus) => {
-    const actor = getActor();
+    const actor = getPipelineActor();
     setTriageUpdating(true);
     try {
       const res = await fetch(`/api/candidates/${candidateId}/triage`, {
@@ -339,8 +328,8 @@ export default function CandidatePipelines({
       if (res.ok) {
         setTriageStatus(newStatus);
       }
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("triage change failed:", err);
     } finally {
       setTriageUpdating(false);
       setTriageMenuOpen(false);
@@ -350,7 +339,7 @@ export default function CandidatePipelines({
 
   // ── Approve to vacancy ──
   const handleAddToVacancy = async (vacancyId: string) => {
-    const actor = getActor();
+    const actor = getPipelineActor();
     try {
       const res = await fetch(`/api/vacancies/${vacancyId}/pipeline`, {
         method: "POST",
@@ -360,14 +349,14 @@ export default function CandidatePipelines({
       if (res.ok) {
         await fetchPipelines();
       }
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("add to vacancy failed:", err);
     }
   };
 
   // ── Move stage ──
   const handleMove = async (vacancyId: string, toStage: PipelineStage) => {
-    const actor = getActor();
+    const actor = getPipelineActor();
     // Optimistic update
     setPipelines((prev) =>
       prev.map((p) => {
@@ -512,7 +501,7 @@ export default function CandidatePipelines({
             </div>
           ) : pipelines.length === 0 ? (
             <div className="px-5 py-6 text-sm text-muted-foreground">
-              Пока не в одной воронке
+              Пока ни в одной воронке
             </div>
           ) : (
             pipelines.map((pipeline) => {

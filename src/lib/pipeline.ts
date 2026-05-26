@@ -54,6 +54,19 @@ export const TRIAGE_STATUS_COLORS: Record<TriageStatus, string> = {
   BASE: "#0d9488",
 };
 
+/** Имя текущего пользователя для записи в историю (из localStorage, спрашиваем один раз). Только для клиента. */
+export function getPipelineActor(): string {
+  if (typeof window === "undefined") return "Система";
+  let actor = localStorage.getItem("pipeline_actor");
+  if (!actor) {
+    actor =
+      prompt("Как вас зовут? (будет записано как автор действия)", "Система") ??
+      "Система";
+    localStorage.setItem("pipeline_actor", actor);
+  }
+  return actor;
+}
+
 /** Целое число полных дней между моментом и now (округление вниз, 0 для сегодня). */
 export function daysInStage(since: Date, now: Date): number {
   const ms = now.getTime() - since.getTime();

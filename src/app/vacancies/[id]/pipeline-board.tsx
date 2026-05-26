@@ -8,6 +8,7 @@ import {
   PIPELINE_STAGE_COLORS,
   groupPipelineByStage,
   daysInStage,
+  getPipelineActor,
 } from "@/lib/pipeline";
 import { ROLE_LABELS, GRADE_LABELS } from "@/lib/constants";
 import type { PipelineStage } from "@prisma/client";
@@ -40,16 +41,6 @@ function scoreBadgeClasses(score: number): string {
 function formatDays(days: number): string {
   if (days === 0) return "сегодня";
   return `${days} дн.`;
-}
-
-function getActor(): string {
-  if (typeof window === "undefined") return "Система";
-  let actor = localStorage.getItem("pipeline_actor");
-  if (!actor) {
-    actor = prompt("Как вас зовут? (будет записано как автор действия)", "Система") ?? "Система";
-    localStorage.setItem("pipeline_actor", actor);
-  }
-  return actor;
 }
 
 // ── Move menu ────────────────────────────────────────────────────────
@@ -96,7 +87,7 @@ function MoveMenu({ row, anchorRect, onMove, onOpenCard, onClose }: MoveMenuProp
         <div className="px-2.5 pt-0.5 pb-1 text-[11px] text-muted-foreground/60 uppercase tracking-wider">
           Переместить на этап
         </div>
-        {PIPELINE_STAGE_ORDER.map((stage) => (
+        {PIPELINE_STAGE_ORDER.filter((s) => s !== row.stage).map((stage) => (
           <button
             key={stage}
             className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-foreground hover:bg-muted/60 transition-colors"
@@ -236,7 +227,7 @@ export default function PipelineBoard({ vacancyId }: { vacancyId: string }) {
   }, [vacancyId]);
 
   const handleMove = async (targetRow: PipelineRow, toStage: PipelineStage) => {
-    const actor = getActor();
+    const actor = getPipelineActor();
 
     // Optimistic update
     setRows((prev) =>
