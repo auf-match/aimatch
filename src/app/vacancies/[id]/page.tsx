@@ -550,7 +550,7 @@ export default function VacancyPage({
             <p className="t-eyebrow mb-3 opacity-60">Подтверждение</p>
             <p className="text-sm font-semibold mb-1">Удалить вакансию?</p>
             <p className="text-sm text-muted-foreground mb-5">
-              «{vacancy.title}» будет удалена вместе со всеми результатами матчинга и шорт-листом. Это действие нельзя отменить.
+              «{vacancy.title}» будет удалена вместе со всеми результатами матчинга и воронкой. Это действие нельзя отменить.
             </p>
             <div className="flex gap-2 justify-end">
               <Button

@@ -76,7 +76,7 @@ function MoveMenu({ row, anchorRect, onMove, onOpenCard, onClose }: MoveMenuProp
     >
       <div
         ref={popupRef}
-        className="absolute rounded-xl border border-border bg-card shadow-[0_20px_60px_rgba(0,0,0,.4)] p-1.5"
+        className="absolute rounded-xl border border-border bg-white dark:bg-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,.4)] p-1.5"
         style={{ left, top, width: popupWidth }}
       >
         {/* Candidate name header */}

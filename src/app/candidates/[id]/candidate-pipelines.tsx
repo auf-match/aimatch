@@ -91,7 +91,7 @@ function MoveMenu({ anchorRect, currentStage, onMove, onClose }: MoveMenuProps) 
     >
       <div
         ref={popupRef}
-        className="absolute rounded-xl border border-border bg-card shadow-[0_20px_60px_rgba(0,0,0,.4)] p-1.5"
+        className="absolute rounded-xl border border-border bg-white dark:bg-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,.4)] p-1.5"
         style={{ left, top, width: popupWidth }}
       >
         <div className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -184,10 +184,10 @@ function VacancyPicker({
     >
       <div
         ref={popupRef}
-        className="absolute rounded-xl border border-border bg-card shadow-[0_20px_60px_rgba(0,0,0,.4)] p-1.5 max-h-[320px] overflow-y-auto"
+        className="absolute rounded-xl border border-border bg-white dark:bg-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,.4)] p-1.5 max-h-[320px] overflow-y-auto"
         style={{ left, top, width: popupWidth }}
       >
-        <div className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sticky top-0 bg-card">
+        <div className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sticky top-0 bg-white dark:bg-zinc-900">
           Выбрать вакансию
         </div>
         {loading ? (
@@ -436,7 +436,7 @@ export default function CandidatePipelines({
             >
               <div
                 ref={triagePopupRef}
-                className="absolute rounded-xl border border-border bg-card shadow-[0_20px_60px_rgba(0,0,0,.4)] p-1.5"
+                className="absolute rounded-xl border border-border bg-white dark:bg-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,.4)] p-1.5"
                 style={{
                   left: triageAnchorRect.left,
                   top: triageAnchorRect.bottom + 8,
