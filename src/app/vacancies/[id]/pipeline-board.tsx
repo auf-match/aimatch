@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   PIPELINE_STAGE_ORDER,
   PIPELINE_STAGE_LABELS,
@@ -8,7 +9,7 @@ import {
   groupPipelineByStage,
   daysInStage,
 } from "@/lib/pipeline";
-import { ROLE_LABELS } from "@/lib/constants";
+import { ROLE_LABELS, GRADE_LABELS } from "@/lib/constants";
 import type { PipelineStage } from "@prisma/client";
 
 // ── Types ────────────────────────────────────────────────────────────
@@ -152,6 +153,9 @@ function CandidateCard({ row, onMenu }: CandidateCardProps) {
       </div>
       <div className="text-[11px] text-muted-foreground mb-1.5">
         {ROLE_LABELS[row.candidate.role] ?? row.candidate.role}
+        {row.candidate.grade && (
+          <> · {GRADE_LABELS[row.candidate.grade] ?? row.candidate.grade}</>
+        )}
       </div>
       <div className="flex items-center gap-1.5">
         {row.score !== null && (
@@ -212,6 +216,7 @@ function BoardColumn({ stage, rows, onCardMenu }: ColumnProps) {
 // ── Main component ───────────────────────────────────────────────────
 
 export default function PipelineBoard({ vacancyId }: { vacancyId: string }) {
+  const router = useRouter();
   const [rows, setRows] = useState<PipelineRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [menuState, setMenuState] = useState<{
@@ -220,11 +225,14 @@ export default function PipelineBoard({ vacancyId }: { vacancyId: string }) {
   } | null>(null);
 
   useEffect(() => {
+    let active = true;
+    setLoading(true);
     fetch(`/api/vacancies/${vacancyId}/pipeline`)
       .then((r) => r.json())
-      .then((data: PipelineRow[]) => setRows(data))
-      .catch((err) => console.error("Pipeline fetch error:", err))
-      .finally(() => setLoading(false));
+      .then((data: PipelineRow[]) => { if (active) setRows(data); })
+      .catch((err) => { if (active) console.error("board fetch error:", err); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
   }, [vacancyId]);
 
   const handleMove = async (targetRow: PipelineRow, toStage: PipelineStage) => {
@@ -308,7 +316,7 @@ export default function PipelineBoard({ vacancyId }: { vacancyId: string }) {
           anchorRect={menuState.rect}
           onMove={(toStage) => handleMove(menuState.row, toStage)}
           onOpenCard={() => {
-            window.location.href = `/candidates/${menuState.row.candidateId}`;
+            router.push(`/candidates/${menuState.row.candidateId}`);
           }}
           onClose={() => setMenuState(null)}
         />
