@@ -62,11 +62,22 @@ model Candidate {
   // --- Статус ---
   status                 CandidateStatus @default(NEW)
 
+  // --- Глобальный триаж (ручной, дизайн-лидом) ---
+  triageStatus     TriageStatus  @default(NEW)
+  triageUpdatedAt  DateTime?
+  triageUpdatedBy  String?
+
   // --- Файлы и портфолио ---
   resumeFileUrl          String?
   resumeRawText          String?
   portfolioLinks         String[]
   portfolioAnalysis      Json?
+
+  // --- Семантический поиск ---
+  embedding              Float[]   // вектор профиля (768 dims); пустой пока не сгенерирован
+  embeddingText          String?   // текст-профиль, по которому считали — для отладки/регенерации
+  embeddingModel         String?   // напр. "text-embedding-004" — версионирование при смене модели
+  embeddingUpdatedAt     DateTime?
 
   // --- Опыт работы ---
   experiences            Experience[]
@@ -75,6 +86,9 @@ model Candidate {
   matchResults           MatchResult[]
   shortlistEntries       ShortlistEntry[]
   notes                  CandidateNote[]
+  screeningResults       ScreeningResult[]
+  detailedScores         DetailedScore[]
+  pipelines              Pipeline[]
 
   // --- Ручные корректировки ---
   manualOverrides        Json?
@@ -157,12 +171,25 @@ model Vacancy {
   clientNotes            String?
   internalNotes          String?
 
+  // --- Брифинг (запись Zoom) ---
+  briefingTranscript     String?         // полный транскрипт со встречи (если создано из аудио)
+  briefingSummary        String?         // 1-2 абзаца, о чём был брифинг
+
   // --- Приоритеты ---
   clientPriorities       Json?
+
+  // --- Статистика воронки ---
+  totalCandidates        Int?
+  afterHardFilter        Int?
+  afterAiScreening       Int?
+  lastScreeningAt        DateTime?
 
   // --- Связи ---
   matchResults           MatchResult[]
   shortlist              ShortlistEntry[]
+  screeningResults       ScreeningResult[]
+  detailedScores         DetailedScore[]
+  pipelines              Pipeline[]
 
   openedAt               DateTime        @default(now())
   closedAt               DateTime?
@@ -212,6 +239,88 @@ model ShortlistEntry {
   addedBy     String
   notes       String?
   status      ShortlistStatus @default(PENDING)
+
+  @@unique([candidateId, vacancyId])
+}
+
+model Pipeline {
+  id          String    @id @default(cuid())
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  vacancyId   String
+  vacancy     Vacancy   @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+
+  stage       PipelineStage @default(DL_APPROVED)
+  notes       String?
+
+  transitions StageTransition[]
+
+  @@unique([candidateId, vacancyId])
+}
+
+model StageTransition {
+  id         String         @id @default(cuid())
+  createdAt  DateTime       @default(now())
+
+  pipelineId String
+  pipeline   Pipeline       @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+
+  fromStage  PipelineStage?
+  toStage    PipelineStage
+  actor      String
+  note       String?
+
+  @@index([pipelineId])
+}
+
+// ============================================
+// AI-СКРИНИНГ
+// ============================================
+
+model ScreeningResult {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  vacancyId   String
+  vacancy     Vacancy   @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+
+  decision    ScreeningDecision
+  reason      String
+
+  // --- Ручной review дизайн-лидом ---
+  poolStatus  PoolStatus @default(NEW)
+  reviewNote  String?
+  reviewedBy  String?
+  reviewedAt  DateTime?
+
+  @@unique([candidateId, vacancyId])
+}
+
+// ============================================
+// ДЕТАЛЬНЫЙ СКОРИНГ
+// ============================================
+
+model DetailedScore {
+  id          String   @id @default(cuid())
+  createdAt   DateTime @default(now())
+
+  candidateId String
+  candidate   Candidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  vacancyId   String
+  vacancy     Vacancy   @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+
+  overallScore           Int
+  criteriaScores         Json
+  matchExplanation       String
+  strengthsForVacancy    String[]
+  gaps                   String[]
+  clarificationQuestions String[]
+  clarificationMessage   String?
 
   @@unique([candidateId, vacancyId])
 }
@@ -294,4 +403,35 @@ enum ShortlistStatus {
   OFFERED
   HIRED
   REJECTED
+}
+
+enum ScreeningDecision {
+  PASS
+  REJECT
+}
+
+enum PoolStatus {
+  NEW
+  REVIEWED
+  APPROVED
+  REJECTED_MANUAL
+  MAYBE
+}
+
+enum TriageStatus {
+  NEW
+  NEEDS_CLARIFICATION
+  CLARIFYING
+  BASE
+}
+
+enum PipelineStage {
+  DL_APPROVED
+  IN_CLIENT_SELECTION
+  REHEARSAL
+  CLIENT_INTERVIEW
+  TEST_TASK
+  OFFER
+  REJECTED
+  HIRED
 }
