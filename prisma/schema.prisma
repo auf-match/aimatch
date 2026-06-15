@@ -191,6 +191,10 @@ model Vacancy {
 
   openedAt               DateTime        @default(now())
   closedAt               DateTime?
+
+  // --- Журнал уточнений ---
+  criteriaUpdatedAt DateTime?
+  updates           VacancyUpdate[]
 }
 
 // ============================================
@@ -256,6 +260,27 @@ model StageTransition {
   note       String?
 
   @@index([pipelineId])
+}
+
+model VacancyUpdate {
+  id            String              @id @default(cuid())
+  vacancyId     String
+  vacancy       Vacancy             @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  createdAt     DateTime            @default(now())
+  actor         String
+
+  kind          VacancyUpdateKind
+  rawText       String?
+  audioFileUrl  String?
+  transcript    String?
+
+  status        VacancyUpdateStatus @default(PROCESSING)
+  proposedDiff  Json?
+  appliedDiff   Json?
+  appliedAt     DateTime?
+  errorMessage  String?
+
+  @@index([vacancyId, createdAt])
 }
 
 // ============================================
@@ -405,4 +430,18 @@ enum PipelineStage {
   OFFER
   REJECTED
   HIRED
+}
+
+enum VacancyUpdateKind {
+  TEXT
+  AUDIO
+}
+
+enum VacancyUpdateStatus {
+  PROCESSING
+  PENDING
+  APPLIED
+  DISMISSED
+  EMPTY
+  FAILED
 }
