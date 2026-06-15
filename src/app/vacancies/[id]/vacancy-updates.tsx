@@ -481,6 +481,12 @@ function UpdateCard({
   const [editedValues, setEditedValues] = useState<Map<number, unknown>>(new Map());
   const [applying, setApplying] = useState(false);
   const [dismissing, setDismissing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setChecked(new Set());
+    setEditedValues(new Map());
+  }, [update.proposedDiff, update.status]);
 
   const previewText = update.rawText ?? update.transcript ?? "";
 
@@ -503,6 +509,7 @@ function UpdateCard({
 
   const handleApply = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    setError(null);
     setApplying(true);
     const selections = [...checked].map((index) => ({
       index,
@@ -510,6 +517,8 @@ function UpdateCard({
     }));
     try {
       await onApply(update.id, selections);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось применить");
     } finally {
       setApplying(false);
     }
@@ -517,9 +526,12 @@ function UpdateCard({
 
   const handleDismiss = async (e: React.MouseEvent) => {
     e.stopPropagation();
+    setError(null);
     setDismissing(true);
     try {
       await onDismiss(update.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Не удалось отклонить");
     } finally {
       setDismissing(false);
     }
@@ -601,26 +613,31 @@ function UpdateCard({
                 editedValues={editedValues}
                 onEdit={handleEdit}
               />
-              <div className="flex items-center gap-2 pt-1">
-                <Button
-                  size="sm"
-                  disabled={checked.size === 0 || applying}
-                  onClick={handleApply}
-                  style={checked.size > 0 ? { background: "#F97029" } : undefined}
-                  className={checked.size > 0 ? "text-white font-semibold" : ""}
-                >
-                  {applying
-                    ? "Применяем…"
-                    : `Применить отмеченное (${checked.size})`}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={dismissing || applying}
-                  onClick={handleDismiss}
-                >
-                  {dismissing ? "…" : "Отказаться от всего"}
-                </Button>
+              <div className="flex flex-col gap-1.5 pt-1">
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    disabled={checked.size === 0 || applying}
+                    onClick={handleApply}
+                    style={checked.size > 0 ? { background: "#F97029" } : undefined}
+                    className={checked.size > 0 ? "text-white font-semibold" : ""}
+                  >
+                    {applying
+                      ? "Применяем…"
+                      : `Применить отмеченное (${checked.size})`}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={dismissing || applying}
+                    onClick={handleDismiss}
+                  >
+                    {dismissing ? "…" : "Отказаться от всего"}
+                  </Button>
+                </div>
+                {error && (
+                  <p className="text-[12px] text-red-600 dark:text-red-400">{error}</p>
+                )}
               </div>
             </div>
           )}
@@ -772,19 +789,27 @@ export default function VacancyUpdates({ vacancyId }: { vacancyId: string }) {
   const [showForm, setShowForm] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const currentVacancyIdRef = useRef(vacancyId);
+
+  useEffect(() => {
+    currentVacancyIdRef.current = vacancyId;
+  }, [vacancyId]);
 
   const hasProcessing = (list: VacancyUpdate[]) =>
     list.some((u) => u.status === "PROCESSING");
 
   const fetchUpdates = async () => {
+    const expected = vacancyId;
     try {
       const res = await fetch(`/api/vacancies/${vacancyId}/updates`);
       if (!res.ok) return;
       const data: VacancyUpdate[] = await res.json();
-      setUpdates(data);
+      if (expected === currentVacancyIdRef.current) {
+        setUpdates(data);
+      }
       return data;
-    } catch {
-      // silent
+    } catch (err) {
+      console.error("vacancy-updates fetch failed:", err);
     }
   };
 
@@ -842,27 +867,41 @@ export default function VacancyUpdates({ vacancyId }: { vacancyId: string }) {
     updateId: string,
     selections: { index: number; editedValue?: unknown }[]
   ) => {
-    const res = await fetch(
-      `/api/vacancies/${vacancyId}/updates/${updateId}/apply`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ selections }),
-      }
-    );
-    if (res.ok) {
-      await fetchUpdates();
+    let res: Response;
+    try {
+      res = await fetch(
+        `/api/vacancies/${vacancyId}/updates/${updateId}/apply`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ selections }),
+        }
+      );
+    } catch {
+      throw new Error("Сетевая ошибка");
     }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error ?? "Не удалось применить");
+    }
+    await fetchUpdates();
   };
 
   const handleDismiss = async (updateId: string) => {
-    const res = await fetch(
-      `/api/vacancies/${vacancyId}/updates/${updateId}/dismiss`,
-      { method: "POST" }
-    );
-    if (res.ok) {
-      await fetchUpdates();
+    let res: Response;
+    try {
+      res = await fetch(
+        `/api/vacancies/${vacancyId}/updates/${updateId}/dismiss`,
+        { method: "POST" }
+      );
+    } catch {
+      throw new Error("Сетевая ошибка");
     }
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error ?? "Не удалось отклонить");
+    }
+    await fetchUpdates();
   };
 
   const handleRetry = async (updateId: string) => {
@@ -873,10 +912,20 @@ export default function VacancyUpdates({ vacancyId }: { vacancyId: string }) {
       )
     );
     startPolling();
-    await fetch(`/api/vacancies/${vacancyId}/updates/${updateId}/retry`, {
-      method: "POST",
-    });
-    // Polling will pick up the real status
+    try {
+      const res = await fetch(
+        `/api/vacancies/${vacancyId}/updates/${updateId}/retry`,
+        { method: "POST" }
+      );
+      if (!res.ok) {
+        console.error("vacancy-updates retry failed:", res.status);
+        await fetchUpdates();
+      }
+      // On success: polling will pick up the real status
+    } catch (err) {
+      console.error("vacancy-updates retry network error:", err);
+      await fetchUpdates();
+    }
   };
 
   const toggleExpanded = (id: string) => {
