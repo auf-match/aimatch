@@ -14,7 +14,9 @@ import {
   WORK_FORMAT_LABELS,
 } from "@/lib/constants";
 import { PIPELINE_STAGE_LABELS, getPipelineActor } from "@/lib/pipeline";
+import { isStaleScore } from "@/lib/vacancy-update";
 import PipelineBoard from "./pipeline-board";
+import VacancyUpdates from "./vacancy-updates";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -42,6 +44,7 @@ type FeedbackRating = "GOOD" | "BAD" | "NEUTRAL";
 
 interface MatchResult {
   id: string;
+  createdAt: string;
   overallScore: number;
   matchExplanation: string;
   strengthsForVacancy: string[];
@@ -139,6 +142,7 @@ interface VacancyDetail {
   pipelines: PipelineEntry[];
   _count: { matchResults: number; pipelines: number };
   createdAt: string;
+  criteriaUpdatedAt: string | null;
 }
 
 // ── Score helpers ───────────────────────────────────────────────────
@@ -206,6 +210,7 @@ export default function VacancyPage({
   const [editError, setEditError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [rescoring, setRescoring] = useState(false);
 
   const fetchVacancy = useCallback(async () => {
     try {
@@ -346,6 +351,21 @@ export default function VacancyPage({
     }
   };
 
+  const handleRescoreStale = async () => {
+    setRescoring(true);
+    try {
+      await fetch(`/api/vacancies/${id}/rescore-stale`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      await fetchVacancy();
+    } catch {
+      console.error("Rescore stale failed");
+    } finally {
+      setRescoring(false);
+    }
+  };
+
   const handleCopyMessage = async (matchId: string, text: string) => {
     await navigator.clipboard.writeText(injectRecruiterName(text));
     setCopiedId(matchId);
@@ -476,6 +496,10 @@ export default function VacancyPage({
   const totalWeight = criteria.reduce((s, c) => s + c.weight, 0);
   const hasCriteria = criteria.length > 0;
   const hasResults = vacancy.matchResults.length > 0;
+  const criteriaUpdatedAtDate = vacancy.criteriaUpdatedAt ? new Date(vacancy.criteriaUpdatedAt) : null;
+  const staleCount = vacancy.matchResults.filter((m) =>
+    isStaleScore(new Date(m.createdAt), criteriaUpdatedAtDate)
+  ).length;
 
   return (
     <div className="min-h-screen">
@@ -773,6 +797,17 @@ export default function VacancyPage({
                 )}
               </div>
               <div className="flex items-center gap-2">
+                {staleCount > 0 && (
+                  <Button
+                    onClick={handleRescoreStale}
+                    disabled={rescoring || matching || softening}
+                    variant="outline"
+                    size="sm"
+                    title="Пересчитать скоры кандидатов, которые были посчитаны до последнего обновления критериев"
+                  >
+                    {rescoring ? "Пересчёт..." : `Пересчитать устаревших (${staleCount})`}
+                  </Button>
+                )}
                 {hasResults && (
                   <Button
                     onClick={handleRegenMessages}
@@ -927,6 +962,14 @@ export default function VacancyPage({
                                 {PIPELINE_STAGE_LABELS[pipelineStage as keyof typeof PIPELINE_STAGE_LABELS] ?? "В воронке"}
                               </span>
                             )}
+                            {isStaleScore(new Date(m.createdAt), criteriaUpdatedAtDate) && (
+                              <span
+                                className="inline-flex items-center rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 px-2 py-0.5 text-[10px] font-medium"
+                                title="Скор был посчитан до последнего обновления критериев"
+                              >
+                                Скор устарел
+                              </span>
+                            )}
                             {m.feedbackRating === "GOOD" && <span title="Подходит" className="text-sm">👍</span>}
                             {m.feedbackRating === "BAD" && <span title="Не подходит" className="text-sm">👎</span>}
                             {m.feedbackRating === "NEUTRAL" && <span title="Под вопросом" className="text-sm">🤔</span>}
@@ -1078,6 +1121,11 @@ export default function VacancyPage({
             )}
           </CardContent>
         </Card>
+
+        {/* ── Vacancy updates journal ──────────────────────────── */}
+        <div className="mt-4">
+          <VacancyUpdates vacancyId={id} />
+        </div>
 
         {/* ── Pipeline board (full width) ──────────────────────── */}
         <Card className="mt-4">
