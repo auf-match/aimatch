@@ -6,3 +6,6 @@ dist/
 *.tsbuildinfo
 
 .superpowers/
+
+# Локальные данные для импортов (PII кандидатов — никогда в репо).
+scripts/data/
