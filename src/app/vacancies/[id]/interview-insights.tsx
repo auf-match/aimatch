@@ -297,13 +297,27 @@ function InsightRow({
 }: {
   item: InsightItem;
   muted?: boolean;
-  onToggleImportant: () => void;
-  onToggleHidden: () => void;
-  onSaveText: (newText: string) => void;
+  onToggleImportant: () => Promise<boolean>;
+  onToggleHidden: () => Promise<boolean>;
+  onSaveText: (newText: string) => Promise<boolean>;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.text);
+  const [error, setError] = useState<string | null>(null);
+  const errorTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    return () => {
+      if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
+    };
+  }, []);
+
+  const flashError = () => {
+    setError("Не удалось сохранить");
+    if (errorTimeoutRef.current) clearTimeout(errorTimeoutRef.current);
+    errorTimeoutRef.current = setTimeout(() => setError(null), 3000);
+  };
 
   useEffect(() => {
     if (editing) {
@@ -328,7 +342,9 @@ function InsightRow({
       setDraft(item.text);
       return;
     }
-    onSaveText(trimmed);
+    onSaveText(trimmed).then((ok) => {
+      if (!ok) flashError();
+    });
   };
 
   return (
@@ -337,7 +353,11 @@ function InsightRow({
     >
       <button
         type="button"
-        onClick={onToggleImportant}
+        onClick={() => {
+          onToggleImportant().then((ok) => {
+            if (!ok) flashError();
+          });
+        }}
         className="mt-0.5 shrink-0 text-muted-foreground hover:text-amber-500 transition-colors"
         title={item.important ? "Убрать важность" : "Отметить как важное"}
       >
@@ -379,11 +399,18 @@ function InsightRow({
         <span className="text-[10px] uppercase tracking-wide text-muted-foreground/70">
           {item.origin === "ai" ? "AI" : "Ручной"}
         </span>
+        {error && (
+          <p className="text-[11px] text-red-600 dark:text-red-400">{error}</p>
+        )}
       </div>
 
       <button
         type="button"
-        onClick={onToggleHidden}
+        onClick={() => {
+          onToggleHidden().then((ok) => {
+            if (!ok) flashError();
+          });
+        }}
         className="mt-0.5 shrink-0 text-muted-foreground hover:text-foreground transition-colors"
         title={item.hidden ? "Показать" : "Скрыть"}
       >
@@ -409,9 +436,9 @@ function CategoryCard({
 }: {
   category: InsightCategory;
   items: InsightItem[];
-  onToggleImportant: (id: string) => void;
-  onToggleHidden: (id: string) => void;
-  onSaveText: (id: string, text: string) => void;
+  onToggleImportant: (id: string) => Promise<boolean>;
+  onToggleHidden: (id: string) => Promise<boolean>;
+  onSaveText: (id: string, text: string) => Promise<boolean>;
   onAdd: (text: string) => Promise<{ ok: boolean; status?: number; error?: string }>;
 }) {
   const [showHidden, setShowHidden] = useState(false);
@@ -663,8 +690,8 @@ export default function InterviewInsights({ vacancyId }: { vacancyId: string }) 
     cat: InsightCategory,
     id: string,
     patch: Partial<Pick<InsightItem, "text" | "important" | "hidden">>,
-    revertTo: InsightItem
-  ) => {
+    revertFrom: InsightItem
+  ): Promise<boolean> => {
     try {
       const res = await fetch(
         `/api/vacancies/${vacancyId}/interview-insights/items/${id}`,
@@ -677,34 +704,41 @@ export default function InterviewInsights({ vacancyId }: { vacancyId: string }) 
       if (!res.ok) throw new Error(`status ${res.status}`);
       const updated: InsightItem = await res.json();
       setItemLocal(cat, id, () => updated);
+      return true;
     } catch (err) {
       console.error("patch insight item failed:", err);
-      setItemLocal(cat, id, () => revertTo);
+      // Revert only the fields this patch touched, so a concurrent successful
+      // edit to a different field on the same item isn't clobbered.
+      const revertPatch = Object.fromEntries(
+        (Object.keys(patch) as (keyof typeof patch)[]).map((k) => [k, revertFrom[k]])
+      );
+      setItemLocal(cat, id, (cur) => ({ ...cur, ...revertPatch }));
+      return false;
     }
   };
 
   const handleToggleImportant = (cat: InsightCategory, id: string) => {
     const item = findItem(cat, id);
-    if (!item) return;
+    if (!item) return Promise.resolve(true);
     const optimistic = { ...item, important: !item.important };
     setItemLocal(cat, id, () => optimistic);
-    patchItem(cat, id, { important: optimistic.important }, item);
+    return patchItem(cat, id, { important: optimistic.important }, item);
   };
 
   const handleToggleHidden = (cat: InsightCategory, id: string) => {
     const item = findItem(cat, id);
-    if (!item) return;
+    if (!item) return Promise.resolve(true);
     const optimistic = { ...item, hidden: !item.hidden };
     setItemLocal(cat, id, () => optimistic);
-    patchItem(cat, id, { hidden: optimistic.hidden }, item);
+    return patchItem(cat, id, { hidden: optimistic.hidden }, item);
   };
 
   const handleSaveText = (cat: InsightCategory, id: string, text: string) => {
     const item = findItem(cat, id);
-    if (!item) return;
+    if (!item) return Promise.resolve(true);
     const optimistic = { ...item, text };
     setItemLocal(cat, id, () => optimistic);
-    patchItem(cat, id, { text }, item);
+    return patchItem(cat, id, { text }, item);
   };
 
   const handleAddItem = async (

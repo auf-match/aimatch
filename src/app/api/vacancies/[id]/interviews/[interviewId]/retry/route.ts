@@ -33,7 +33,7 @@ export async function POST(
     } else {
       await prisma.vacancyInterview.update({
         where: { id: interviewId },
-        data: { errorMessage: null },
+        data: { status: "PROCESSING", errorMessage: null },
       });
     }
 
