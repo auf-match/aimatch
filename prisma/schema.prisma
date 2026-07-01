@@ -195,6 +195,10 @@ model Vacancy {
   // --- Журнал уточнений ---
   criteriaUpdatedAt DateTime?
   updates           VacancyUpdate[]
+
+  // --- Инсайты с интервью ---
+  interviewInsights Json?
+  interviews        VacancyInterview[]
 }
 
 // ============================================
@@ -278,6 +282,24 @@ model VacancyUpdate {
   proposedDiff  Json?
   appliedDiff   Json?
   appliedAt     DateTime?
+  errorMessage  String?
+
+  @@index([vacancyId, createdAt])
+}
+
+model VacancyInterview {
+  id            String                  @id @default(cuid())
+  vacancyId     String
+  vacancy       Vacancy                 @relation(fields: [vacancyId], references: [id], onDelete: Cascade)
+  createdAt     DateTime                @default(now())
+  actor         String
+
+  source        VacancyInterviewSource
+  rawText       String?
+  audioFileUrl  String?
+  transcript    String?
+
+  status        VacancyInterviewStatus  @default(PROCESSING)
   errorMessage  String?
 
   @@index([vacancyId, createdAt])
@@ -443,5 +465,16 @@ enum VacancyUpdateStatus {
   APPLIED
   DISMISSED
   EMPTY
+  FAILED
+}
+
+enum VacancyInterviewSource {
+  TEXT
+  AUDIO
+}
+
+enum VacancyInterviewStatus {
+  PROCESSING
+  READY
   FAILED
 }
