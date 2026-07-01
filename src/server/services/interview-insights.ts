@@ -42,31 +42,33 @@ export async function processVacancyInterview(interviewId: string): Promise<void
 
     // Фаза 1: транскрибация (если нужно).
     let transcript = interview.transcript;
-    if (!transcript && interview.source === "AUDIO" && interview.audioFileUrl) {
-      const absPath = path.isAbsolute(interview.audioFileUrl)
-        ? interview.audioFileUrl
-        : path.join(process.cwd(), interview.audioFileUrl);
-      const buffer = await fs.readFile(absPath);
-      const mimeType = getAudioMimeType(path.basename(absPath));
-      if (!mimeType) throw new Error("Неподдерживаемый формат аудио");
-      transcript = await transcribeAudio(buffer, mimeType);
+    if (!transcript) {
+      if (interview.source === "AUDIO" && interview.audioFileUrl) {
+        const absPath = path.isAbsolute(interview.audioFileUrl)
+          ? interview.audioFileUrl
+          : path.join(process.cwd(), interview.audioFileUrl);
+        const buffer = await fs.readFile(absPath);
+        const mimeType = getAudioMimeType(path.basename(absPath));
+        if (!mimeType) throw new Error("Неподдерживаемый формат аудио");
+        transcript = await transcribeAudio(buffer, mimeType);
+      } else if (interview.source === "TEXT") {
+        transcript = interview.rawText?.trim() || "";
+      }
+
+      if (!transcript) {
+        await prisma.vacancyInterview.update({
+          where: { id: interviewId },
+          data: { status: "FAILED", errorMessage: "Пустой транскрипт" },
+        });
+        return;
+      }
+
+      // Персистим транскрипт независимо от источника — это то, на что
+      // ориентируется catch-блок при выборе FAILED vs READY+errorMessage.
       await prisma.vacancyInterview.update({
         where: { id: interviewId },
         data: { transcript },
       });
-    }
-
-    // Если это TEXT — используем rawText.
-    if (!transcript && interview.source === "TEXT") {
-      transcript = interview.rawText?.trim() || "";
-    }
-
-    if (!transcript) {
-      await prisma.vacancyInterview.update({
-        where: { id: interviewId },
-        data: { status: "FAILED", errorMessage: "Пустой транскрипт" },
-      });
-      return;
     }
 
     // После успешной транскрипции — READY (даже если парсинг ниже упадёт).
@@ -88,6 +90,9 @@ export async function processVacancyInterview(interviewId: string): Promise<void
     });
     const raw = await callGemini([{ text: prompt }]);
     const suggestions = parseJsonResponse(raw);
+    if (Object.values(suggestions).every((arr) => arr.length === 0)) {
+      console.warn(`interview ${interviewId}: AI vernul empty insights (possible malformed response)`);
+    }
 
     // Фаза 3: мерж (с оптимистичной блокировкой через updatedAt).
     await mergeIntoVacancy(interview.vacancyId, suggestions, interviewId);
@@ -99,22 +104,27 @@ export async function processVacancyInterview(interviewId: string): Promise<void
     });
   } catch (err) {
     console.error("processVacancyInterview failed:", err);
-    // Если транскрипт уже есть — оставляем READY + записываем errorMessage
-    // (retry перезапустит только парсинг).
-    // Если транскрипта нет — FAILED (retry начнёт с транскрипции).
-    const cur = await prisma.vacancyInterview.findUnique({ where: { id: interviewId } });
-    if (!cur) return;
-    const message = err instanceof Error ? err.message : "Неизвестная ошибка";
-    if (cur.transcript) {
-      await prisma.vacancyInterview.update({
-        where: { id: interviewId },
-        data: { errorMessage: message },
-      });
-    } else {
-      await prisma.vacancyInterview.update({
-        where: { id: interviewId },
-        data: { status: "FAILED", errorMessage: message },
-      });
+    try {
+      // Если транскрипт уже есть — оставляем/восстанавливаем READY + записываем errorMessage
+      // (retry перезапустит только парсинг). Явно ставим status: "READY", чтобы запись
+      // не застряла в PROCESSING, если этот прогон упал уже после персиста транскрипта.
+      // Если транскрипта нет — FAILED (retry начнёт с транскрипции).
+      const cur = await prisma.vacancyInterview.findUnique({ where: { id: interviewId } });
+      if (!cur) return;
+      const message = err instanceof Error ? err.message : "Неизвестная ошибка";
+      if (cur.transcript) {
+        await prisma.vacancyInterview.update({
+          where: { id: interviewId },
+          data: { status: "READY", errorMessage: message },
+        });
+      } else {
+        await prisma.vacancyInterview.update({
+          where: { id: interviewId },
+          data: { status: "FAILED", errorMessage: message },
+        });
+      }
+    } catch (innerErr) {
+      console.error("processVacancyInterview: failed to record error state:", innerErr, "original error:", err);
     }
   }
 }
