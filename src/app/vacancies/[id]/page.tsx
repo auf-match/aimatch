@@ -17,6 +17,7 @@ import { PIPELINE_STAGE_LABELS, getPipelineActor } from "@/lib/pipeline";
 import { isStaleScore } from "@/lib/vacancy-update";
 import PipelineBoard from "./pipeline-board";
 import VacancyUpdates from "./vacancy-updates";
+import InterviewInsights from "./interview-insights";
 
 // ── Types ───────────────────────────────────────────────────────────
 
@@ -1125,6 +1126,11 @@ export default function VacancyPage({
         {/* ── Vacancy updates journal ──────────────────────────── */}
         <div className="mt-4">
           <VacancyUpdates vacancyId={id} />
+        </div>
+
+        {/* ── Interview insights ───────────────────────────────── */}
+        <div className="mt-4">
+          <InterviewInsights vacancyId={id} />
         </div>
 
         {/* ── Pipeline board (full width) ──────────────────────── */}
