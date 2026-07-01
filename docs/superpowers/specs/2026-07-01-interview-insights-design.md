@@ -13,7 +13,7 @@
 - **Инсайты накапливаются, не перезаписываются.** Каждая новая запись обрабатывается независимо, AI-предложения мержатся в существующий пул с дедупликацией. Ручные правки, флаги `important`/`hidden` сохраняются.
 - **Каждый инсайт — объект**, не строка. У него есть `id`, `text`, `important`, `hidden`, `origin`, `sourceInterviewId`.
 - **Автогенерация после каждой READY-записи.** Без confirm — терять нечего.
-- **Ручное редактирование чипов** остаётся: поменять текст, поставить/снять «важное», скрыть, добавить свой инсайт.
+- **Ручное редактирование инсайтов** остаётся: поменять текст, поставить/снять «важное», скрыть, добавить свой инсайт.
 - **4 фиксированных категории.**
 - **Ввод — текст и/или аудио.** Аудио через существующий `briefing-audio.ts`.
 - **Fire-and-forget обработка + поллинг.** Как в «Уточнениях».
@@ -76,9 +76,11 @@ interviewInsights Json?
 
 1. Пользователь жмёт «+ Загрузить запись», отправляет форму (текст и/или аудио).
 2. Backend создаёт `VacancyInterview(status=PROCESSING)`.
-3. Если аудио — транскрибируем через `briefing-audio.ts`, сохраняем `transcript`. Статус → READY.
+3. Если аудио — транскрибируем через `briefing-audio.ts`, сохраняем `transcript`. Статус → READY. Если транскрибация упала — `status=FAILED` + `errorMessage`, обработка прерывается.
 4. Запускаем анализ этого одного транскрипта: новый промпт `interview-insights-parse.ts` — на вход **транскрипт этой встречи** + короткий контекст вакансии (`title`, `role`, `grade`). На выход — 4 массива строк: сырые предложения от AI.
 5. Мержим в `Vacancy.interviewInsights` (см. алгоритм ниже).
+
+**Раздельные фазы для retry.** Если шаг 4/5 упал, а транскрипт уже есть — `status` остаётся `READY`, но отдельно записываем `errorMessage = "Не удалось разобрать инсайты"`. Endpoint `.../retry` решает, что перезапустить: если `transcript` пуст → шаги 3–5 с нуля; если есть → только 4–5. Так retry идемпотентен и не транскрибирует повторно.
 
 Fire-and-forget как в `VacancyUpdate`; клиент поллит `GET /interviews` каждые 3с пока есть PROCESSING.
 
@@ -144,7 +146,7 @@ Fire-and-forget как в `VacancyUpdate`; клиент поллит `GET /inter
 - `GET /api/vacancies/[id]/interviews` — список всех записей (desc). Также возвращает актуальный `interviewInsights` (или отдельный `GET .../interview-insights`, но проще один эндпойнт, чтобы клиент не делал два запроса).
 - `POST /api/vacancies/[id]/interviews/[interviewId]/retry` — перезапуск обработки упавшей записи (`FAILED → PROCESSING`, запускает `processVacancyInterview`).
 - `PATCH /api/vacancies/[id]/interview-insights/items/[itemId]` — body `{ text?, important?, hidden? }` (все опциональные, replace-if-present). Правит одно поле.
-- `POST /api/vacancies/[id]/interview-insights/items` — body `{ category, text }` → создаёт новый item с `origin: "manual"`, добавляет в соответствующий массив, возвращает.
+- `POST /api/vacancies/[id]/interview-insights/items` — body `{ category, text }` → создаёт новый item с `origin: "manual"`, добавляет в соответствующий массив, возвращает. Валидация: `category` строго один из `"leadFocusAreas" | "leadQuestions" | "candidateTips" | "prescreeningQuestions"` (400 при несоответствии). Дедуп: если нормализованный текст (`trim().toLowerCase()`) уже есть в этой категории — 409 «Такой инсайт уже есть» без создания.
 
 `itemId` — стабильный (nanoid), клиенту приходит в GET и он им пользуется. Не завязано на индекс массива.
 
