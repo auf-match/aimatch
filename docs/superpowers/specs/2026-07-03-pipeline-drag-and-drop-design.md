@@ -30,6 +30,8 @@
 
 При `onDragEnd` по droppable-id (этапу) и draggable-id находим соответствующую `PipelineRow` в state и вызываем `handleMove(row, targetStage)`.
 
+**Резолвинг row по draggable-id — прямой lookup, без парсинга.** Каждый board строит draggable-id из тех же полей, по которым уникальна карточка, и находит row тем же ключом: доска вакансии — `rows.find(r => r.candidateId === activeId)`; общая доска — `rows.find(r => \`${r.candidateId}::${r.vacancyId}\` === activeId)`. НЕ парсить составной id через `split("::")` (candidateId теоретически может содержать спецсимволы). `handleMove` принимает целый объект `row`, поэтому достаточно найти его в state.
+
 ### Структура компонентов (обе доски)
 
 - Ряд колонок оборачивается в `<DndContext sensors={sensors} onDragStart={...} onDragEnd={...} autoScroll>`.
@@ -57,7 +59,7 @@ onDragEnd(event):
 
 `CandidateCard`, `BoardColumn` и move-логика сейчас продублированы в двух файлах (общая доска дополнительно показывает вакансию на карточке). Drag добавляет `useDraggable`/`useDroppable`-обвязку. Чтобы не плодить копии, **выносим общий низкоуровневый wrapper** в отдельный модуль:
 
-- `src/app/pipeline/board-dnd.tsx` (или `src/components/pipeline/`): экспортирует `DraggableCardWrapper` (обёртка с `useDraggable`, прокидывает listeners/attributes/setNodeRef и `isDragging`) и `DroppableColumnWrapper` (обёртка с `useDroppable`, прокидывает `setNodeRef` и `isOver`). Плюс общий хелпер `usePipelineSensors()` (PointerSensor + activationConstraint).
+- `src/components/pipeline-dnd.tsx` (`"use client"`; потребляется обоими клиентскими board-компонентами): экспортирует `DraggableCardWrapper` (обёртка с `useDraggable`, прокидывает listeners/attributes/setNodeRef и `isDragging` детям через render-props или как обёртку с `children`) и `DroppableColumnWrapper` (обёртка с `useDroppable`, прокидывает `setNodeRef` и `isOver`). Плюс общий хелпер `usePipelineSensors()` (PointerSensor + `activationConstraint: { distance: 8 }`). Точную форму пропсов (render-prop vs className-through) выбирает имплементер при написании — главное, чтобы оба board'а использовали один модуль.
 
 Специфику отрисовки карточки (что показывать — с вакансией или без) каждый board оставляет у себя, оборачивая свой JSX в эти wrapper'ы. Так drag-механика едина, а визуал остаётся раздельным. Если по ходу выяснится, что визуал карточек почти идентичен, допустимо свести карточку в один общий компонент с опциональным показом вакансии — но это не обязательно для v1.
 
