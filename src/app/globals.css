@@ -1,88 +1,416 @@
+@import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 
 @layer base {
-  .theme {
-    --font-heading: var(--font-sans);
-    --font-sans: var(--font-sans)
-  }
   :root {
-    --background: oklch(1 0 0);
-    --foreground: oklch(0.145 0 0);
+    /* Background #F7F7F5 */
+    --background: oklch(0.970 0.003 85);
+    /* Text primary #151515 */
+    --foreground: oklch(0.105 0 0);
+
+    /* Cards #FFFFFF */
     --card: oklch(1 0 0);
-    --card-foreground: oklch(0.145 0 0);
+    --card-foreground: oklch(0.105 0 0);
+
     --popover: oklch(1 0 0);
-    --popover-foreground: oklch(0.145 0 0);
-    --primary: oklch(0.205 0 0);
-    --primary-foreground: oklch(0.985 0 0);
-    --secondary: oklch(0.97 0 0);
-    --secondary-foreground: oklch(0.205 0 0);
-    --muted: oklch(0.97 0 0);
-    --muted-foreground: oklch(0.556 0 0);
-    --accent: oklch(0.97 0 0);
-    --accent-foreground: oklch(0.205 0 0);
-    --destructive: oklch(0.577 0.245 27.325);
-    --border: oklch(0.922 0 0);
-    --input: oklch(0.922 0 0);
-    --ring: oklch(0.708 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --radius: 0.625rem;
-    --sidebar: oklch(0.985 0 0);
-    --sidebar-foreground: oklch(0.145 0 0);
-    --sidebar-primary: oklch(0.205 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.97 0 0);
-    --sidebar-accent-foreground: oklch(0.205 0 0);
-    --sidebar-border: oklch(0.922 0 0);
-    --sidebar-ring: oklch(0.708 0 0)
+    --popover-foreground: oklch(0.105 0 0);
+
+    /* Primary — orange #F97029 */
+    --primary: oklch(0.68 0.20 42);
+    --primary-foreground: oklch(1 0 0);
+
+    /* Soft gray #EFEFEF */
+    --secondary: oklch(0.940 0 0);
+    --secondary-foreground: oklch(0.20 0 0);
+
+    /* Soft gray #EFEFEF */
+    --muted: oklch(0.940 0 0);
+    /* Text secondary #6B6B6B */
+    --muted-foreground: oklch(0.460 0 0);
+
+    --accent: oklch(0.940 0 0);
+    --accent-foreground: oklch(0.20 0 0);
+
+    --destructive: oklch(0.58 0.22 27);
+
+    /* Warm border #ECE7E3 */
+    --border: oklch(0.916 0.012 60);
+    --input: oklch(0.900 0.014 60);
+    --ring: oklch(0.68 0.20 42 / 0.30);
+
+    /* Border radius — 16px for cards, overridden on elements */
+    --radius: 1rem;
+
+    /* Card shadow */
+    --shadow-card: 0 2px 12px 0 oklch(0 0 0 / 0.06), 0 0 0 1px oklch(0 0 0 / 0.03);
+    --shadow-sm:   0 1px 4px 0 oklch(0 0 0 / 0.05);
+
+    /* Sidebar — white */
+    --sidebar: oklch(1 0 0);
+    --sidebar-foreground: oklch(0.28 0 0);
+    --sidebar-primary: oklch(0.68 0.20 42);
+    --sidebar-primary-foreground: oklch(1 0 0);
+    --sidebar-accent: oklch(0.970 0.003 85);
+    --sidebar-accent-foreground: oklch(0.20 0 0);
+    --sidebar-border: oklch(0.916 0.012 60);
+    --sidebar-ring: oklch(0.68 0.20 42 / 0.30);
   }
+
   .dark {
-    --background: oklch(0.145 0 0);
-    --foreground: oklch(0.985 0 0);
-    --card: oklch(0.205 0 0);
-    --card-foreground: oklch(0.985 0 0);
-    --popover: oklch(0.205 0 0);
-    --popover-foreground: oklch(0.985 0 0);
-    --primary: oklch(0.922 0 0);
-    --primary-foreground: oklch(0.205 0 0);
-    --secondary: oklch(0.269 0 0);
-    --secondary-foreground: oklch(0.985 0 0);
-    --muted: oklch(0.269 0 0);
-    --muted-foreground: oklch(0.708 0 0);
-    --accent: oklch(0.269 0 0);
-    --accent-foreground: oklch(0.985 0 0);
-    --destructive: oklch(0.704 0.191 22.216);
+    --background: oklch(0.13 0 0);
+    --foreground: oklch(0.97 0 0);
+    --card: oklch(0.18 0 0);
+    --card-foreground: oklch(0.97 0 0);
+    --popover: oklch(0.20 0 0);
+    --popover-foreground: oklch(0.97 0 0);
+    --primary: oklch(0.67 0.22 33);
+    --primary-foreground: oklch(1 0 0);
+    --secondary: oklch(0.26 0 0);
+    --secondary-foreground: oklch(0.97 0 0);
+    --muted: oklch(0.26 0 0);
+    --muted-foreground: oklch(0.64 0 0);
+    --accent: oklch(0.26 0 0);
+    --accent-foreground: oklch(0.97 0 0);
+    --destructive: oklch(0.70 0.20 27);
     --border: oklch(1 0 0 / 10%);
-    --input: oklch(1 0 0 / 15%);
-    --ring: oklch(0.556 0 0);
-    --chart-1: oklch(0.87 0 0);
-    --chart-2: oklch(0.556 0 0);
-    --chart-3: oklch(0.439 0 0);
-    --chart-4: oklch(0.371 0 0);
-    --chart-5: oklch(0.269 0 0);
-    --sidebar: oklch(0.205 0 0);
-    --sidebar-foreground: oklch(0.985 0 0);
-    --sidebar-primary: oklch(0.488 0.243 264.376);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
-    --sidebar-accent: oklch(0.269 0 0);
-    --sidebar-accent-foreground: oklch(0.985 0 0);
+    --input: oklch(1 0 0 / 14%);
+    --ring: oklch(0.67 0.22 33 / 0.40);
+    --sidebar: oklch(0.18 0 0);
+    --sidebar-foreground: oklch(0.85 0 0);
+    --sidebar-primary: oklch(0.67 0.22 33);
+    --sidebar-primary-foreground: oklch(1 0 0);
+    --sidebar-accent: oklch(0.26 0 0);
+    --sidebar-accent-foreground: oklch(0.97 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
-    --sidebar-ring: oklch(0.556 0 0)
+    --sidebar-ring: oklch(0.67 0.22 33 / 0.40);
   }
+
   * {
-    @apply border-border outline-ring/50;
+    border-color: var(--border);
+    outline-color: color-mix(in oklch, var(--ring), transparent 50%);
   }
+
   body {
-    @apply bg-background text-foreground;
+    background-color: var(--background);
+    color: var(--foreground);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
-  html {
-    @apply font-sans;
+
+  /* Allow selecting any text and links — standard OS copy-paste UX */
+  a, span, p, h1, h2, h3, h4, h5, h6, li, td, th, div, label {
+    -webkit-user-select: text;
+    user-select: text;
   }
+}
+
+/* ── Typography system ──────────────────────────────────────────────
+   Usage: add class t-* to elements instead of composing Tailwind
+   utilities manually.
+────────────────────────────────────────────────────────────────── */
+
+/* Large match score number */
+.t-display {
+  font-size: 50px;
+  line-height: 56px;
+  font-weight: 700;
+  color: #F97029;
+}
+
+/* Page-level heading: candidate name, vacancy title */
+.t-h1 {
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+/* Card heading next to icon */
+.t-card-title {
+  font-size: 14px;
+  line-height: 20px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+/* Secondary heading: candidate name in match row */
+.t-h3 {
+  font-size: 13.5px;
+  line-height: 18px;
+  font-weight: 500;
+  color: var(--foreground);
+}
+
+/* Uppercase label above a block: "ОПИСАНИЕ ПРОДУКТА" */
+.t-section-label {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #6B6B6B;
+}
+
+/* Main body text */
+.t-body {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+  color: var(--foreground);
+}
+
+/* Secondary body text */
+.t-body-muted {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+  color: #6B6B6B;
+}
+
+/* Dense body text (forms, compact cards) */
+.t-body-sm {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+  color: var(--foreground);
+}
+
+/* Dense secondary text */
+.t-body-sm-muted {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 400;
+  color: #6B6B6B;
+}
+
+/* Small meta info, counts */
+.t-caption {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  color: #6B6B6B;
+}
+
+/* Small bold counter or score */
+.t-caption-bold {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+/* Tiny tag/badge label */
+.t-micro {
+  font-size: 10px;
+  line-height: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6B6B6B;
+}
+
+/* Interactive text link/button */
+.t-link {
+  font-weight: 500;
+  color: #F97029;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.t-link:hover {
+  opacity: 0.7;
+}
+
+/* AI-generated quote or explanation */
+.t-quote {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+  font-style: italic;
+  color: #6B6B6B;
+}
+
+/* ── Soft-UI система (по референсам) ─────────────────────────────────
+   Мягкий «глиняный» неоморфизм: белые карточки на тёплом сером фоне,
+   крупные концентрические скругления, один оранжевый акцент, тёплое
+   свечение под акцентными кнопками. Иерархия держится на контрасте
+   веса, цвета и размера шрифта.
+──────────────────────────────────────────────────────────────────── */
+
+@layer base {
+  :root {
+    /* Скругления — концентрические: вложенный элемент меньше контейнера
+       на величину внутреннего отступа */
+    --r-card:   28px;   /* большие карточки */
+    --r-inner:  20px;   /* блок внутри карточки */
+    --r-button: 16px;   /* кнопки, поля ввода */
+    --r-icon:   14px;   /* квадратные icon-кнопки */
+    --r-pill:   9999px; /* полностью круглые пилюли */
+
+    /* Оранжевый акцент-градиент (вместо радужного из референса).
+       --grad-accent — спокойный orange→amber для обычных действий.
+       --grad-accent-vivid — живой orange→coral для hero / «Ask AI». */
+    --grad-accent:       linear-gradient(135deg, #FFA94D 0%, #F97029 55%, #EF5E1F 100%);
+    --grad-accent-vivid: linear-gradient(135deg, #FFB057 0%, #F97029 50%, #FF6B7E 118%);
+
+    /* Тёплое свечение под акцентными кнопками */
+    --glow-accent: 0 6px 20px -6px oklch(0.68 0.20 42 / 0.55);
+
+    /* «Глиняная» тень: лёгкий верхний блик + мягкая нижняя тень */
+    --shadow-clay:
+      0 1px 2px 0 oklch(0 0 0 / 0.04),
+      0 10px 28px -10px oklch(0 0 0 / 0.12),
+      inset 0 1px 0 0 oklch(1 0 0 / 0.7);
+
+    /* Утопленное поле (поиск) */
+    --shadow-inset:
+      inset 0 1px 3px 0 oklch(0 0 0 / 0.10),
+      inset 0 -1px 0 0 oklch(1 0 0 / 0.6);
+
+    /* Семантические подложки-пилюли (мягкий тон + насыщенный текст) */
+    --tint-green-bg: oklch(0.94 0.05 152);
+    --tint-green-fg: oklch(0.52 0.13 152);
+    --tint-blue-bg:  oklch(0.94 0.04 240);
+    --tint-blue-fg:  oklch(0.55 0.15 250);
+    --tint-red-bg:   oklch(0.94 0.05 25);
+    --tint-red-fg:   oklch(0.52 0.17 27);
+  }
+}
+
+/* ── Карточка ──────────────────────────────────────────────────── */
+.soft-card {
+  background: var(--card);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-clay);
+  padding: 20px;
+}
+/* Вложенный блок: радиус меньше контейнера → концентрические скругления */
+.soft-card__inner {
+  background: var(--card);
+  border-radius: var(--r-inner);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+}
+
+/* ── Пилюли и кнопки ───────────────────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 18px;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--foreground);
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.pill:hover { transform: translateY(-1px); }
+.pill:disabled, .pill[disabled] { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+/* Акцентное действие — оранжевый градиент + свечение */
+.pill--accent {
+  background: var(--grad-accent);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: var(--glow-accent);
+}
+/* Особая «Ask AI» — живой тёплый градиент */
+.pill--ai {
+  background: var(--grad-accent-vivid);
+  color: #fff;
+  font-weight: 600;
+  box-shadow: var(--glow-accent);
+}
+/* Второстепенное действие — пунктирный контур (Upload) */
+.pill--outline {
+  background: transparent;
+  box-shadow: none;
+  border: 1.5px dashed var(--input);
+  color: var(--muted-foreground);
+}
+/* Статусные пилюли */
+.pill--green { background: var(--tint-green-bg); color: var(--tint-green-fg); box-shadow: none; font-weight: 600; }
+.pill--blue  { background: var(--tint-blue-bg);  color: var(--tint-blue-fg);  box-shadow: none; font-weight: 600; }
+.pill--red   { background: var(--tint-red-bg);   color: var(--tint-red-fg);   box-shadow: none; font-weight: 600; }
+/* Утопленное поле поиска */
+.pill--search {
+  background: var(--muted);
+  box-shadow: var(--shadow-inset);
+  color: var(--muted-foreground);
+  justify-content: space-between;
+  cursor: text;
+}
+
+/* Сегментная пилюля: нейтральная часть фьюзится с акцентным действием */
+.pill-group {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: var(--r-pill);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.pill-group > .pill { box-shadow: none; border-radius: 0; height: 44px; }
+.pill-group > .pill + .pill { border-left: 1px solid var(--border); }
+
+/* Квадратная icon-кнопка (+, переключатель, выравнивание) */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--r-icon);
+  background: var(--card);
+  box-shadow: var(--shadow-card);
+  color: var(--muted-foreground);
+  transition: transform 0.15s ease;
+}
+.icon-btn:hover { transform: translateY(-1px); }
+
+/* ── Типографические приёмы из референса ───────────────────────── */
+
+/* Значение + единица в одной строке: «30 mins», «9:41 AM».
+   Размер задаётся на .stat (напр. font-size: 50px), единица — доля от него. */
+.stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.28em;
+  letter-spacing: -0.02em;
+  font-size: 28px;
+}
+.stat__value { font-weight: 700; color: var(--foreground); }
+.stat__unit  { font-weight: 500; color: var(--muted-foreground); font-size: 0.5em; }
+
+/* Приглушённый абзац с акцентом на ключевых словах:
+   <p class="t-emphasis">обычный текст <b>важное</b></p> */
+.t-emphasis {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+}
+.t-emphasis b, .t-emphasis strong {
+  font-weight: 700;
+  color: var(--foreground);
+}
+
+/* Эйброу-лейбл с разрядкой и слотом под иконку (☀ MORNING JAY / NEW).
+   Светлее, чем .t-section-label — третий уровень иерархии. */
+.t-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.10em;
+  color: oklch(0.70 0 0);
 }
