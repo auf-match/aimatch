@@ -33,7 +33,7 @@ function isBehanceProfileUrl(v: unknown): v is string {
 }
 
 function profileName(p: BehanceProfile): string {
-  const display = (p.display_name ?? "").trim();
+  const display = typeof p.display_name === "string" ? p.display_name.trim() : "";
   if (display) return display;
   const composed = [p.first_name, p.last_name]
     .map((x) => (typeof x === "string" ? x.trim() : ""))
@@ -69,12 +69,12 @@ export function extractBehanceProfiles(json: unknown): BehanceProfile[] {
 }
 
 function isTelegram(url: string): boolean {
-  return /(^|\/\/)(t\.me)\//.test(url) || url.startsWith("t.me/");
+  return /(^|\/\/)(t\.me)\//.test(url);
 }
 
 function looksLikeEmail(v: string): boolean {
   const s = v.trim();
-  return s.includes("@") && s.includes(".") && !s.includes(" ");
+  return s.includes("@") && s.includes(".") && !/\s/.test(s);
 }
 
 /** Маппит профиль в строку импорта. null — если нет имени или behance-url. */

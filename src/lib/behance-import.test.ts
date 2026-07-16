@@ -45,6 +45,16 @@ describe("extractBehanceProfiles", () => {
     const { display_name, ...noDisplay } = profile;
     expect(extractBehanceProfiles([noDisplay])).toHaveLength(1);
   });
+
+  it("does not throw when display_name is a non-string, and falls back to first/last name", () => {
+    const json = [
+      { ...profile, display_name: 0 },
+      { ...profile, display_name: {} },
+    ];
+    expect(() => extractBehanceProfiles(json)).not.toThrow();
+    const result = extractBehanceProfiles(json);
+    expect(result).toHaveLength(2);
+  });
 });
 
 describe("mapProfileToCandidate", () => {
@@ -102,6 +112,18 @@ describe("mapProfileToCandidate", () => {
 
   it("returns null without a behance url", () => {
     expect(mapProfileToCandidate({ display_name: "X" })).toBeNull();
+  });
+
+  it("does not throw when display_name is a non-string and falls back to first/last name", () => {
+    const p = { ...profile, display_name: 0 as unknown as string };
+    expect(() => mapProfileToCandidate(p)).not.toThrow();
+    expect(mapProfileToCandidate(p)!.name).toBe("Sabina Alieva");
+  });
+
+  it("returns null when display_name is a non-string and there is no first/last name fallback", () => {
+    const p = { url: "https://www.behance.net/x", display_name: {} as unknown as string };
+    expect(() => mapProfileToCandidate(p)).not.toThrow();
+    expect(mapProfileToCandidate(p)).toBeNull();
   });
 });
 
