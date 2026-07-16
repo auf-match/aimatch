@@ -101,12 +101,24 @@ enum CandidateStatus {
 7. `prisma.candidate.update`: `role`, `grade`, `specializations`, `domains`, `skills`, `tools`, оценки по шкалам, `aiSummary`, `portfolioAnalysis`, `resumeRawText` (текст скрейпа), `status: "PORTFOLIO_ANALYZED"`.
    **Имя не перезаписываем** — из JSON оно достовернее, чем вывод AI по портфолио.
 8. `generateEmbedding(...)` → `embedding`, `embeddingText`, `embeddingModel`, `embeddingUpdatedAt` (как в `upload`).
-9. Любая ошибка на шагах 2–8 → `status: "ANALYSIS_FAILED"`, не бросаем наружу (fire-and-forget безопасен).
+
+**Обработка ошибок по стадиям (важно для бюджета).** Стадии стоят денег по возрастанию: скрейп (бесплатно) → `parseResume` (платно, даёт `role`/`grade`) → `classifyDirection` + `analyzePortfolio` (платно, дают оценки). Нельзя выбрасывать оплаченный результат ранней стадии из-за сбоя поздней:
+
+- **Скрейп упал / мёртвая страница** → `ANALYSIS_FAILED`. Ничего не потеряно (не платили).
+- **`parseResume` упал** → `ANALYSIS_FAILED`. Роль/грейд не получены, сохранять нечего.
+- **`parseResume` прошёл, но `classifyDirection`/`analyzePortfolio` упали** → **сохраняем результат парсинга** (`role`, `grade`, `skills`, …, `resumeRawText`, эмбеддинг) с `portfolioAnalysis: null` и `status: "PARSED"`. **Не** `ANALYSIS_FAILED`. Так же поступает `upload` — там анализ портфолио best-effort, кандидат сохраняется в любом случае.
+  - Почему это правильно: главная ценность (`role`/`grade` → кандидат виден матчингу) уже получена и оплачена. Транзиентный 503 от Gemini на 2000 профилей иначе заставит платить за `parseResume` заново.
+  - `status: "PARSED"` выводит кандидата из очереди `NEW` — повторно парситься он не будет.
+  - Добрать оценки портфолио потом можно точечно существующей кнопкой «Переанализировать портфолио» (роут `reanalyze-portfolio`): ему как раз нужны уже проставленные `role`/`grade`, и он дописывает `portfolioAnalysis`. Для этого случая он подходит.
+- **Эмбеддинг упал** → best-effort, статус не понижаем (как в `upload`).
+
+Наружу сервис не бросает никогда — fire-and-forget безопасен.
 
 **Существующий роут `reanalyze-portfolio` не трогаем** — его поведение остаётся прежним. Новый сервис самостоятелен.
 
 Эндпоинты:
-- `POST /api/candidates/analyze-batch` — body `{ limit: 10|20|50 }`. Берёт `limit` кандидатов со `status: "NEW"` и непустым `portfolioLinks`, запускает fire-and-forget обработку с параллелизмом **3**, сразу отвечает `{ started: N }`. `export const maxDuration = 300` (как в аудио-роутах; при `limit: 50` обработка может не уложиться — см. Пограничные случаи).
+- `POST /api/candidates/analyze-batch` — body `{ limit: 10|20|50 }`. Берёт `limit` кандидатов с `status: "NEW"`, `source: "behance"` и непустым `portfolioLinks`, запускает fire-and-forget обработку с параллелизмом **3**, сразу отвечает `{ started: N }`.
+  **Фильтр по `source: "behance"` обязателен:** без него пачка захватит любых прочих кандидатов со статусом `NEW` (например, заведённых иначе) и перезапишет им `role`/`grade` — незапланированный расход и порча данных. Счётчик `pending` в `/status` фильтруется так же. `export const maxDuration = 300` (как в аудио-роутах; при `limit: 50` обработка может не уложиться — см. Пограничные случаи).
 - `GET /api/candidates/analyze-batch/status` — `{ pending, failed }` (счётчики по `NEW` / `ANALYSIS_FAILED`).
 - `POST /api/candidates/[id]/analyze-import` — точечный (пере)запуск `analyzeImportedCandidate(id)` для одного кандидата; fire-and-forget, отвечает `{ ok: true }`. Нужен для повтора после `ANALYSIS_FAILED`.
 
@@ -130,7 +142,12 @@ enum CandidateStatus {
 
 **Повтор для `ANALYSIS_FAILED`.** В карточке кандидата, если `status === "ANALYSIS_FAILED"`, показывается кнопка «Повторить анализ» → `POST /api/candidates/[id]/analyze-import` (НЕ существующая «Переанализировать портфолио» — см. выше). Массового повтора всех failed в v1 нет.
 
-**Новый статус в UI.** Добавление `ANALYSIS_FAILED` требует двух правок отображения: подпись в `CANDIDATE_STATUS_LABELS` (`src/lib/constants.ts`) — напр. «Ошибка анализа», и класс бейджа в списке кандидатов (`src/app/candidates/page.tsx`, где статусы красятся) — красный/приглушённый.
+**Новый статус в UI.** Добавление `ANALYSIS_FAILED` требует трёх правок отображения:
+1. Подпись в `STATUS_LABELS` (`src/lib/constants.ts`) — «Ошибка анализа».
+2. Класс бейджа в `STATUS_PILL` (`src/app/candidates/page.tsx`) — `ANALYSIS_FAILED: "pill--red"`.
+3. Сам класс `.pill--red` и токены `--tint-red-bg` / `--tint-red-fg` в `src/app/globals.css` — их **нет**, есть только green и blue. Добавляем по образцу существующих (`oklch`, в ряд к `--tint-green-*` / `--tint-blue-*`).
+
+Проектная конвенция: бейджи статусов — семантические классы из `globals.css`, не Tailwind-утилиты.
 
 ## Пограничные случаи
 
