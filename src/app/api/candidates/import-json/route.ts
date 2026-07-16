@@ -15,8 +15,8 @@ function behanceUrlOf(row: CandidateImportRow): string {
 export async function POST(req: NextRequest) {
   try {
     const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    if (!file) {
+    const file = formData.get("file");
+    if (!(file instanceof File)) {
       return NextResponse.json({ error: "Файл не загружен" }, { status: 400 });
     }
 
