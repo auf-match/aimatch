@@ -42,7 +42,15 @@ export async function analyzeImportedCandidate(candidateId: string): Promise<voi
   try {
     const candidate = await prisma.candidate.findUnique({
       where: { id: candidateId },
-      select: { id: true, name: true, portfolioLinks: true },
+      select: {
+        id: true,
+        name: true,
+        portfolioLinks: true,
+        location: true,
+        telegramContact: true,
+        email: true,
+        linkedinUrl: true,
+      },
     });
     if (!candidate) return;
 
@@ -101,7 +109,10 @@ export async function analyzeImportedCandidate(candidateId: string): Promise<voi
         platforms: data.platforms,
         skills: data.skills,
         tools: data.tools,
-        location: data.location,
+        // Не затираем контакты, импортированные из Behance-JSON, пустыми
+        // значениями от parseResume (Behance-страницы почти никогда не
+        // содержат email/telegram/location в видимом тексте).
+        location: data.location ?? candidate.location,
         timezone: data.timezone,
         languages: data.languages ?? undefined,
         salaryExpectations: data.salaryExpectations,
@@ -116,9 +127,9 @@ export async function analyzeImportedCandidate(candidateId: string): Promise<voi
         aiConcerns: data.aiConcerns,
         aiConfidenceScore: data.aiConfidenceScore,
 
-        telegramContact: data.telegramContact,
-        email: data.email,
-        linkedinUrl: data.linkedinUrl,
+        telegramContact: data.telegramContact ?? candidate.telegramContact,
+        email: data.email ?? candidate.email,
+        linkedinUrl: data.linkedinUrl ?? candidate.linkedinUrl,
 
         resumeRawText: scrape.text,
 
