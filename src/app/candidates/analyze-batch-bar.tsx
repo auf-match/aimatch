@@ -26,6 +26,7 @@ export default function AnalyzeBatchBar() {
   const [initialized, setInitialized] = useState(false);
   const [limit, setLimit] = useState<number>(20);
   const [submitting, setSubmitting] = useState(false);
+  const [polling, setPolling] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -40,6 +41,7 @@ export default function AnalyzeBatchBar() {
       clearTimeout(pollCapRef.current);
       pollCapRef.current = null;
     }
+    setPolling(false);
   };
 
   const fetchStatus = async (): Promise<StatusResponse | null> => {
@@ -53,28 +55,9 @@ export default function AnalyzeBatchBar() {
     }
   };
 
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      const data = await fetchStatus();
-      if (!active) return;
-      if (data) {
-        setPending(data.pending);
-        setFailed(data.failed);
-      }
-      setInitialized(true);
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    return () => clearPolling();
-  }, []);
-
   const startPolling = () => {
     clearPolling();
+    setPolling(true);
     pollIntervalRef.current = setInterval(async () => {
       const data = await fetchStatus();
       if (!data) return;
@@ -88,6 +71,28 @@ export default function AnalyzeBatchBar() {
       clearPolling();
     }, POLL_CAP_MS);
   };
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const data = await fetchStatus();
+      if (!active) return;
+      if (data) {
+        setPending(data.pending);
+        setFailed(data.failed);
+        if (data.pending > 0) startPolling();
+      }
+      setInitialized(true);
+    })();
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    return () => clearPolling();
+  }, []);
 
   const handleAnalyze = async () => {
     setSubmitting(true);
@@ -130,7 +135,7 @@ export default function AnalyzeBatchBar() {
           <option key={n} value={n}>{n}</option>
         ))}
       </select>
-      <Button size="sm" variant="accent" onClick={handleAnalyze} disabled={submitting}>
+      <Button size="sm" variant="accent" onClick={handleAnalyze} disabled={submitting || polling}>
         {submitting ? "Запускаю..." : "Проанализировать"}
       </Button>
       {error && <span className="text-xs text-red-500">{error}</span>}
