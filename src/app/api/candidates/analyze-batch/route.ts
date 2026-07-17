@@ -9,7 +9,13 @@ const CONCURRENCY = 3;
 
 export async function POST(req: NextRequest) {
   try {
-    const { limit } = (await req.json()) as { limit?: number };
+    let body: { limit?: number };
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Некорректное тело запроса" }, { status: 400 });
+    }
+    const { limit } = body;
     if (!limit || !ALLOWED_LIMITS.includes(limit)) {
       return NextResponse.json({ error: "limit должен быть 10, 20 или 50" }, { status: 400 });
     }
@@ -28,6 +34,11 @@ export async function POST(req: NextRequest) {
 
     // Fire-and-forget: обрабатываем пачками по CONCURRENCY.
     // Рассчитано на долгоживущий Node-процесс (VPS/Railway).
+    // Известное ограничение: строки не «застолбляются» атомарно перед обработкой.
+    // Повторный вызов до завершения пачки (или ретрай отдельного кандидата из
+    // той же пачки) может обработать кандидата дважды — лишний AI-расход, но не
+    // порча данных (последняя запись побеждает). Осознанный компромисс для
+    // админ-инструмента с одним оператором и редкими ручными запусками.
     void (async () => {
       for (let i = 0; i < candidates.length; i += CONCURRENCY) {
         const chunk = candidates.slice(i, i + CONCURRENCY);
