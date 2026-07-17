@@ -9,6 +9,7 @@ import {
   STATUS_LABELS,
   PLATFORM_OPTIONS,
 } from "@/lib/constants";
+import AnalyzeBatchBar from "./analyze-batch-bar";
 
 interface Candidate {
   id: string;
@@ -170,6 +171,8 @@ export default function CandidatesPage() {
           </Link>
         </div>
       </div>
+
+      <AnalyzeBatchBar />
 
       <div className="p-6 max-w-6xl">
         {/* Smart search bar */}

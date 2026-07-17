@@ -182,6 +182,8 @@ export default function CandidatePage({
   const [error, setError] = useState("");
   const [matching, setMatching] = useState(false);
   const [matchDone, setMatchDone] = useState<{ matched: number } | null>(null);
+  const [retryingAnalysis, setRetryingAnalysis] = useState(false);
+  const [retryAnalysisError, setRetryAnalysisError] = useState<string | null>(null);
 
   const [editMode, setEditMode] = useState(false);
   const [draft, setDraft] = useState<EditDraft | null>(null);
@@ -200,6 +202,22 @@ export default function CandidatePage({
       }
     } finally {
       setMatching(false);
+    }
+  };
+
+  const handleRetryAnalysis = async () => {
+    if (!candidate) return;
+    setRetryingAnalysis(true);
+    setRetryAnalysisError(null);
+    try {
+      const res = await fetch(`/api/candidates/${id}/analyze-import`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Не удалось повторить анализ");
+      await fetchCandidate();
+    } catch (err) {
+      setRetryAnalysisError(err instanceof Error ? err.message : "Ошибка");
+    } finally {
+      setRetryingAnalysis(false);
     }
   };
 
@@ -464,16 +482,26 @@ export default function CandidatePage({
               {/* Action row */}
               <Card>
                 <CardContent className="px-5 py-0 h-14 flex items-center justify-between gap-4">
-                  <Button onClick={runMatching} disabled={matching} size="sm">
-                    {matching ? (
-                      <span className="flex items-center gap-1.5">
-                        <span className="h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
-                        Анализирую вакансии...
-                      </span>
-                    ) : (
-                      "Проверить по всем вакансиям"
+                  <div className="flex items-center gap-2">
+                    <Button onClick={runMatching} disabled={matching} size="sm">
+                      {matching ? (
+                        <span className="flex items-center gap-1.5">
+                          <span className="h-3 w-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                          Анализирую вакансии...
+                        </span>
+                      ) : (
+                        "Проверить по всем вакансиям"
+                      )}
+                    </Button>
+                    {candidate.status === "ANALYSIS_FAILED" && (
+                      <Button onClick={handleRetryAnalysis} disabled={retryingAnalysis} variant="outline" size="sm">
+                        {retryingAnalysis ? "Анализируем..." : "Повторить анализ"}
+                      </Button>
                     )}
-                  </Button>
+                    {retryAnalysisError && (
+                      <span className="text-xs text-red-500">{retryAnalysisError}</span>
+                    )}
+                  </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground shrink-0">
                     {matchDone !== null && (
                       <span>{matchDone.matched > 0 ? `Подошёл к ${matchDone.matched} вакансиям` : "Не подошёл ни к одной"}</span>
