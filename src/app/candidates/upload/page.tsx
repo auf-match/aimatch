@@ -9,6 +9,7 @@ import { DirectionPicker } from "@/components/candidate-direction-picker";
 import { DuplicateWarning } from "@/components/candidate-duplicate-warning";
 import { useBulkUpload, isRowValid } from "./use-bulk-upload";
 import type { BulkRow } from "./use-bulk-upload";
+import ImportJsonBlock from "./import-json-block";
 
 export default function UploadPage() {
   const {
@@ -191,6 +192,10 @@ export default function UploadPage() {
             </div>
           </div>
         )}
+
+        <div className="mt-8">
+          <ImportJsonBlock />
+        </div>
       </div>
     </div>
   );
