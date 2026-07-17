@@ -47,10 +47,12 @@ export default function ImportJsonBlock() {
         body: formData,
       });
       let body: unknown = null;
+      let parseFailed = false;
       try {
         body = await res.json();
       } catch {
         body = null;
+        parseFailed = true;
       }
       if (!res.ok) {
         const message =
@@ -58,6 +60,10 @@ export default function ImportJsonBlock() {
             ? (body as { error: string }).error
             : "Не удалось импортировать";
         setError(message);
+        return;
+      }
+      if (parseFailed) {
+        setError("Не удалось разобрать ответ сервера");
         return;
       }
       setResult(body as ImportResult);
@@ -97,7 +103,8 @@ export default function ImportJsonBlock() {
             </span>
             <button
               onClick={handleClearFile}
-              className="text-muted-foreground/40 hover:text-muted-foreground transition-colors text-xl leading-none"
+              disabled={loading}
+              className="text-muted-foreground/40 hover:text-muted-foreground transition-colors text-xl leading-none disabled:opacity-40 disabled:cursor-not-allowed"
               aria-label="Убрать файл"
             >
               ×
@@ -106,7 +113,8 @@ export default function ImportJsonBlock() {
         ) : (
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="w-full flex items-center gap-2 border border-dashed border-border rounded-lg px-3 py-2.5 text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors"
+            disabled={loading}
+            className="w-full flex items-center gap-2 border border-dashed border-border rounded-lg px-3 py-2.5 text-muted-foreground hover:text-foreground hover:border-foreground/30 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <SmallFileIcon />
             <span className="text-sm">Прикрепить JSON-файл</span>
