@@ -103,12 +103,12 @@ export async function analyzeImportedCandidate(candidateId: string): Promise<voi
         role: data.role,
         grade: data.grade,
         yearsOfExperience: data.yearsOfExperience,
-        specializations: data.specializations,
-        domains: data.domains,
+        specializations: data.specializations ?? [],
+        domains: data.domains ?? [],
         segment: data.segment,
-        platforms: data.platforms,
-        skills: data.skills,
-        tools: data.tools,
+        platforms: data.platforms ?? [],
+        skills: data.skills ?? [],
+        tools: data.tools ?? [],
         // Не затираем контакты, импортированные из Behance-JSON, пустыми
         // значениями от parseResume (Behance-страницы почти никогда не
         // содержат email/telegram/location в видимом тексте).
@@ -123,8 +123,8 @@ export async function analyzeImportedCandidate(candidateId: string): Promise<voi
         hasInternationalExperience: data.hasInternationalExperience,
 
         aiSummary: data.aiSummary,
-        aiStrengths: data.aiStrengths,
-        aiConcerns: data.aiConcerns,
+        aiStrengths: data.aiStrengths ?? [],
+        aiConcerns: data.aiConcerns ?? [],
         aiConfidenceScore: data.aiConfidenceScore,
 
         telegramContact: data.telegramContact ?? candidate.telegramContact,
