@@ -26,12 +26,15 @@ function primaryUrlOf(row: CandidateImportRow): string {
  * продублировала бы всех пересекающихся людей.
  */
 function dedupKey(url: string): string {
-  return url
+  const stripped = url
     .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/^www\./, "")
+    .replace(/^https?:\/\//i, "")
+    .replace(/^www\./i, "")
     .replace(/\/+$/, "");
+  const slashIndex = stripped.indexOf("/");
+  const host = (slashIndex === -1 ? stripped : stripped.slice(0, slashIndex)).toLowerCase();
+  const path = slashIndex === -1 ? "" : stripped.slice(slashIndex);
+  return host + path;
 }
 
 export async function POST(req: NextRequest) {
@@ -64,6 +67,9 @@ export async function POST(req: NextRequest) {
         if (row) mapped.push(row);
         else skippedInvalid++;
       }
+      // Проверяем ПОСЛЕ маппинга (не как в Behance-ветке, где до) — сырой
+      // extractHuntflowApplicants почти всегда непуст, а вот у скольких
+      // найдётся портфолио-ссылка, известно только после mapApplicantToCandidate.
       if (mapped.length === 0) {
         return NextResponse.json(
           { error: "В выгрузке Huntflow не найдено кандидатов со ссылкой на портфолио" },
