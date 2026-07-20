@@ -81,8 +81,9 @@ export default function ImportJsonBlock() {
           Импорт из JSON
         </h2>
         <p className="mt-1 text-[13px] text-muted-foreground">
-          Выгрузка профилей Behance. Карточки создаются без AI-анализа —
-          запустить его можно позже на странице кандидатов.
+          Выгрузка Huntflow или профилей Behance — формат определится
+          автоматически. Карточки создаются без AI-анализа: запустить его
+          можно позже на странице кандидатов.
         </p>
       </div>
 
@@ -130,9 +131,9 @@ export default function ImportJsonBlock() {
 
       {result && (
         <p className="text-xs text-muted-foreground">
-          Импортировано {result.imported}. Пропущено: уже в базе{" "}
-          {result.skippedExisting}, без имени/ссылки {result.skippedInvalid}.
-          Всего найдено {result.found}.
+          Импортировано {result.imported}. Пропущено: {result.skippedExisting}{" "}
+          уже в базе, {result.skippedInvalid} без ссылки на портфолио. Всего
+          в файле: {result.found}.
         </p>
       )}
     </div>
