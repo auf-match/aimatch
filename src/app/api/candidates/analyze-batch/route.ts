@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { analyzeImportedCandidate } from "@/server/services/candidate-analysis";
+import { IMPORT_SOURCES } from "@/lib/import-types";
 
 export const maxDuration = 300;
 
@@ -20,12 +21,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "limit должен быть 10, 20 или 50" }, { status: 400 });
     }
 
-    // source: "behance" обязателен — иначе пачка захватит любых прочих
-    // кандидатов со статусом NEW и перезапишет им role/grade.
+    // Фильтр по источникам импорта обязателен — иначе пачка захватит любых
+    // прочих кандидатов со статусом NEW и перезапишет им role/grade.
     const candidates = await prisma.candidate.findMany({
       where: {
         status: "NEW",
-        source: "behance",
+        source: { in: [...IMPORT_SOURCES] },
         portfolioLinks: { isEmpty: false },
       },
       select: { id: true },
