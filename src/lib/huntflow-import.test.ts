@@ -220,6 +220,11 @@ describe("extractHuntflowApplicants", () => {
     expect(extractHuntflowApplicants({ foo: 1 })).toEqual([]);
     expect(extractHuntflowApplicants(null)).toEqual([]);
   });
+
+  it("filters out non-object entries so one bad record doesn't crash the batch", () => {
+    const result = extractHuntflowApplicants({ items: [applicant, null, "garbage", 42] });
+    expect(result).toEqual([applicant]);
+  });
 });
 
 describe("mapApplicantToCandidate", () => {

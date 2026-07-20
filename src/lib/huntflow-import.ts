@@ -162,7 +162,6 @@ export interface HuntflowApplicant {
   email?: string;
   account_source?: unknown;
   externals?: (HuntflowExternal | null)[];
-  [k: string]: unknown;
 }
 
 function isRecord(v: unknown): v is Record<string, unknown> {
@@ -187,7 +186,8 @@ export function isHuntflowExport(json: unknown): boolean {
 
 export function extractHuntflowApplicants(json: unknown): HuntflowApplicant[] {
   if (!isHuntflowExport(json)) return [];
-  return (json as { items: HuntflowApplicant[] }).items;
+  const items = (json as { items: unknown[] }).items;
+  return items.filter(isRecord) as HuntflowApplicant[];
 }
 
 function applicantName(a: HuntflowApplicant): string {
@@ -204,6 +204,8 @@ function resumeBody(a: HuntflowApplicant): string {
     .join("\n");
 }
 
+// Предпочитаем area.name глобально по всем externals; на city откатываемся,
+// только если area.name не нашлось ни у одного из них (не по каждому externals отдельно).
 function applicantLocation(a: HuntflowApplicant): string | undefined {
   for (const e of a.externals ?? []) {
     const name = e?.data?.area?.name;
