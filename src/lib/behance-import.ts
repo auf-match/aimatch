@@ -3,6 +3,8 @@
  * Чистая логика, без I/O — покрыта юнит-тестами.
  */
 
+import type { CandidateImportRow } from "./import-types";
+
 export interface BehanceProfile {
   display_name?: string;
   first_name?: string;
@@ -14,18 +16,6 @@ export interface BehanceProfile {
   city?: string;
   country?: string;
   [k: string]: unknown;
-}
-
-export interface CandidateImportRow {
-  name: string;
-  portfolioLinks: string[];
-  location?: string;
-  telegramContact?: string;
-  email?: string;
-  role: "OTHER";
-  grade: "MIDDLE";
-  status: "NEW";
-  source: "behance";
 }
 
 function isBehanceProfileUrl(v: unknown): v is string {

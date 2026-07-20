@@ -1,10 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
-import {
-  extractBehanceProfiles,
-  mapProfileToCandidate,
-  type CandidateImportRow,
-} from "@/lib/behance-import";
+import { extractBehanceProfiles, mapProfileToCandidate } from "@/lib/behance-import";
+import type { CandidateImportRow } from "@/lib/import-types";
 
 export const maxDuration = 300;
 
