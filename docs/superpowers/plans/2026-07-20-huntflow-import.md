@@ -73,13 +73,20 @@ export interface CandidateImportRow {
 import type { CandidateImportRow } from "./import-types";
 ```
 
-Чтобы существующие импорты `import { ..., type CandidateImportRow } from "@/lib/behance-import"` не сломались, добавить ре-экспорт рядом с импортом:
+Тело `mapProfileToCandidate` не меняется — `source: "behance"` по-прежнему присваивается (литерал входит в union).
+
+**Ре-экспорт не добавляем.** Единственный потребитель типа — `import-json/route.ts`, его импорт переключаем сразу (следующий шаг), иначе в `behance-import.ts` останется мёртвая строка, которую потом примут за нужную.
+
+- [ ] **Step 2a: Переключить импорт в роуте**
+
+В `src/app/api/candidates/import-json/route.ts` (строки 3-7) убрать `type CandidateImportRow` из импорта `@/lib/behance-import` и добавить отдельной строкой:
 
 ```ts
-export type { CandidateImportRow };
+import { extractBehanceProfiles, mapProfileToCandidate } from "@/lib/behance-import";
+import type { CandidateImportRow } from "@/lib/import-types";
 ```
 
-Тело `mapProfileToCandidate` не меняется — `source: "behance"` по-прежнему присваивается (литерал входит в union).
+(Task 4 всё равно перепишет этот роут целиком — здесь правка минимальная, чтобы репозиторий остался зелёным после Task 1.)
 
 - [ ] **Step 3: Проверка**
 
@@ -413,6 +420,9 @@ export function classifyUrls(urls: string[]): ClassifiedUrls {
 Run: `npx vitest run src/lib/huntflow-import.test.ts`
 Expected: PASS, все describe зелёные.
 
+Run: `npx tsc --noEmit`
+Expected: без ошибок.
+
 - [ ] **Step 5: Commit**
 
 ```bash
@@ -478,10 +488,16 @@ describe("isHuntflowExport", () => {
     expect(isHuntflowExport({ items: [{ foo: "bar" }] })).toBe(false);
   });
 
-  it("rejects empty and malformed input", () => {
-    expect(isHuntflowExport({ items: [] })).toBe(false);
+  // Пустой файл уходит в Huntflow-ветку намеренно: там пользователь получит
+  // осмысленное сообщение, а не «не найдено профилей Behance».
+  it("accepts an empty items array", () => {
+    expect(isHuntflowExport({ items: [] })).toBe(true);
+  });
+
+  it("rejects malformed input", () => {
     expect(isHuntflowExport(null)).toBe(false);
     expect(isHuntflowExport({})).toBe(false);
+    expect(isHuntflowExport({ items: "nope" })).toBe(false);
   });
 });
 
@@ -616,7 +632,10 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 export function isHuntflowExport(json: unknown): boolean {
   if (!isRecord(json)) return false;
   const items = json.items;
-  if (!Array.isArray(items) || items.length === 0) return false;
+  if (!Array.isArray(items)) return false;
+  // Пустой items считаем Huntflow-выгрузкой: иначе роут уйдёт в Behance-ветку
+  // и на структурно валидном файле Huntflow выдаст «не найдено профилей Behance».
+  if (items.length === 0) return true;
   const first = items[0];
   if (!isRecord(first)) return false;
   return "externals" in first || "account_source" in first;
@@ -741,13 +760,22 @@ function primaryUrlOf(row: CandidateImportRow): string {
 }
 
 /**
- * Huntflow-парсер канонизирует ссылки (https, без www), а старые
- * Behance-строки лежат в базе в www-форме. Сравниваем оба варианта,
- * иначе один и тот же человек заведётся дважды.
+ * Канонический ключ для дедупа. Huntflow-парсер отдаёт канон (https, без www,
+ * без хвостового слэша), а Behance-парсер пишет URL как есть из выгрузки —
+ * поэтому в базе один и тот же профиль может лежать в любой форме.
+ *
+ * Ключ применяется к ОБЕИМ сторонам сравнения. Перебирать варианты нельзя:
+ * такой перебор односторонний (добавляет www, но не убирает) и не покрывает
+ * хвостовой слэш — повторная загрузка Behance-файла после Huntflow-импорта
+ * продублировала бы всех пересекающихся людей.
  */
-function urlVariants(url: string): string[] {
-  const withWww = url.replace(/^https:\/\/(?!www\.)/, "https://www.");
-  return withWww === url ? [url] : [url, withWww];
+function dedupKey(url: string): string {
+  return url
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/^www\./, "")
+    .replace(/\/+$/, "");
 }
 
 export async function POST(req: NextRequest) {
@@ -802,34 +830,29 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Дедуп внутри файла по основной ссылке
+    // Дедуп внутри файла по каноническому ключу основной ссылки
     const seen = new Set<string>();
     const unique: CandidateImportRow[] = [];
     for (const row of mapped) {
-      const key = primaryUrlOf(row);
+      const key = dedupKey(primaryUrlOf(row));
       if (seen.has(key)) continue;
       seen.add(key);
       unique.push(row);
     }
 
-    // Дедуп против базы — сравниваем ТОЛЬКО по основной ссылке (и её www-варианту)
-    const lookup = new Map<string, string>(); // вариант -> канон
-    for (const row of unique) {
-      const canonical = primaryUrlOf(row);
-      for (const v of urlVariants(canonical)) lookup.set(v, canonical);
-    }
+    // Дедуп против базы. Забираем ссылки всех кандидатов и сравниваем по
+    // каноническому ключу: `hasSome` требует точного совпадения строк, а формы
+    // в базе разные (www / http / хвостовой слэш), поэтому фильтровать запросом
+    // нельзя — промахнёмся. Таблица кандидатов на порядки меньше лимитов
+    // (тысячи строк, короткие массивы ссылок), разовый импорт это выдержит.
     const existing = await prisma.candidate.findMany({
-      where: { portfolioLinks: { hasSome: [...lookup.keys()] } },
       select: { portfolioLinks: true },
     });
-    const existingCanonical = new Set<string>();
+    const existingKeys = new Set<string>();
     for (const c of existing) {
-      for (const link of c.portfolioLinks) {
-        const canonical = lookup.get(link);
-        if (canonical) existingCanonical.add(canonical);
-      }
+      for (const link of c.portfolioLinks) existingKeys.add(dedupKey(link));
     }
-    const toCreate = unique.filter((r) => !existingCanonical.has(primaryUrlOf(r)));
+    const toCreate = unique.filter((r) => !existingKeys.has(dedupKey(primaryUrlOf(r))));
     const skippedExisting = unique.length - toCreate.length;
 
     // Заливка. skipDuplicates не используем: уникального индекса на portfolioLinks
@@ -886,7 +909,7 @@ git commit -m "feat(import): авто-детект формата выгрузк
 import { IMPORT_SOURCES } from "@/lib/import-types";
 ```
 
-Заменить `where`-условие выборки (строки ~23-30) на:
+Заменить блок строк 23-33 целиком (вместе со **старевшим комментарием** `// source: "behance" обязателен…` — его легко забыть и оставить) на:
 
 ```ts
     // Фильтр по источникам импорта обязателен — иначе пачка захватит любых
@@ -957,7 +980,7 @@ git commit -m "feat(import): порционный анализ подхваты�
 
 - [ ] **Step 1: Заменить описание**
 
-Найти (~строки 83-86):
+Найти (строки 83-86):
 
 ```tsx
         <p className="mt-1 text-[13px] text-muted-foreground">
@@ -976,12 +999,34 @@ git commit -m "feat(import): порционный анализ подхваты�
         </p>
 ```
 
-- [ ] **Step 2: Проверка**
+- [ ] **Step 2: Исправить строку результата**
+
+Это не косметика. Сейчас (строки 132-137):
+
+```tsx
+        <p className="text-xs text-muted-foreground">
+          Импортировано {result.imported}. Пропущено: уже в базе{" "}
+          {result.skippedExisting}, без имени/ссылки {result.skippedInvalid}.
+          Всего найдено {result.found}.
+        </p>
+```
+
+На реальном файле это отрендерится как «**без имени/ссылки 1704**» из 3934 — читается как массовый сбой парсинга. На самом деле это здоровые записи, сознательно не импортируемые из-за отсутствия ссылки на портфолио (решение из спеки). Заменить на:
+
+```tsx
+        <p className="text-xs text-muted-foreground">
+          Импортировано {result.imported}. Пропущено: {result.skippedExisting}{" "}
+          уже в базе, {result.skippedInvalid} без ссылки на портфолио. Всего
+          в файле: {result.found}.
+        </p>
+```
+
+- [ ] **Step 3: Проверка**
 
 Run: `npx tsc --noEmit`
 Expected: без ошибок.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add src/app/candidates/upload/import-json-block.tsx
