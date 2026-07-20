@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { classifyUrls, extractUrls } from "./huntflow-import";
+import {
+  classifyUrls,
+  extractUrls,
+  isHuntflowExport,
+  extractHuntflowApplicants,
+  mapApplicantToCandidate,
+} from "./huntflow-import";
 
 describe("classifyUrls — allowlist", () => {
   it("keeps known portfolio platforms", () => {
@@ -150,5 +156,142 @@ describe("classifyUrls — ranking", () => {
       "https://ivanov.notion.site/b",
       "https://designer.ru/user/1",
     ]);
+  });
+});
+
+const applicant = {
+  id: 30378852,
+  account_source: 422647,
+  first_name: "Иван",
+  last_name: "Иванов",
+  middle_name: "Петрович",
+  position: "Product Designer",
+  email: "ivan@example.com",
+  phone: "+79991234567",
+  externals: [
+    {
+      data: {
+        body: [
+          "Портфолио: https://www.behance.net/ivanov/projects",
+          "Телеграм https://t.me/ivanov",
+          "Резюме на https://spb.hh.ru/resume/abc",
+          "LinkedIn https://www.linkedin.com/in/ivanov",
+        ].join("\n"),
+        area: { name: "Санкт-Петербург" },
+      },
+    },
+  ],
+};
+
+describe("isHuntflowExport", () => {
+  it("detects a huntflow export by marker fields", () => {
+    expect(isHuntflowExport({ items: [applicant] })).toBe(true);
+  });
+
+  it("rejects a behance-shaped export", () => {
+    expect(
+      isHuntflowExport([{ display_name: "X", url: "https://behance.net/x" }]),
+    ).toBe(false);
+  });
+
+  it("rejects an items array without huntflow markers", () => {
+    expect(isHuntflowExport({ items: [{ foo: "bar" }] })).toBe(false);
+  });
+
+  // Пустой файл уходит в Huntflow-ветку намеренно: там пользователь получит
+  // осмысленное сообщение, а не «не найдено профилей Behance».
+  it("accepts an empty items array", () => {
+    expect(isHuntflowExport({ items: [] })).toBe(true);
+  });
+
+  it("rejects malformed input", () => {
+    expect(isHuntflowExport(null)).toBe(false);
+    expect(isHuntflowExport({})).toBe(false);
+    expect(isHuntflowExport({ items: "nope" })).toBe(false);
+  });
+});
+
+describe("extractHuntflowApplicants", () => {
+  it("returns items array", () => {
+    expect(extractHuntflowApplicants({ items: [applicant, applicant] })).toHaveLength(2);
+  });
+
+  it("returns empty for non-huntflow input", () => {
+    expect(extractHuntflowApplicants({ foo: 1 })).toEqual([]);
+    expect(extractHuntflowApplicants(null)).toEqual([]);
+  });
+});
+
+describe("mapApplicantToCandidate", () => {
+  it("maps a full applicant", () => {
+    const r = mapApplicantToCandidate(applicant)!;
+    expect(r).toMatchObject({
+      name: "Иван Иванов",
+      portfolioLinks: ["https://behance.net/ivanov"],
+      telegramContact: "https://t.me/ivanov",
+      linkedinUrl: "https://linkedin.com/in/ivanov",
+      email: "ivan@example.com",
+      location: "Санкт-Петербург",
+      role: "OTHER",
+      grade: "MIDDLE",
+      status: "NEW",
+      source: "huntflow",
+    });
+  });
+
+  it("returns null without a portfolio link", () => {
+    const noPf = {
+      ...applicant,
+      externals: [{ data: { body: "Резюме https://hh.ru/resume/abc" } }],
+    };
+    expect(mapApplicantToCandidate(noPf)).toBeNull();
+  });
+
+  it("returns null without a name", () => {
+    const noName = { ...applicant, first_name: "", last_name: "" };
+    expect(mapApplicantToCandidate(noName)).toBeNull();
+  });
+
+  it("collects links across several externals", () => {
+    const multi = {
+      ...applicant,
+      externals: [
+        { data: { body: "https://behance.net/ivanov" } },
+        { data: { body: "https://dribbble.com/ivanov" } },
+      ],
+    };
+    expect(mapApplicantToCandidate(multi)!.portfolioLinks).toEqual([
+      "https://behance.net/ivanov",
+      "https://dribbble.com/ivanov",
+    ]);
+  });
+
+  it("drops the huntflow placeholder email", () => {
+    const r = mapApplicantToCandidate({ ...applicant, email: "office@huntflow.ru" })!;
+    expect(r.email).toBeUndefined();
+  });
+
+  it("falls back from area.name to city for location", () => {
+    const cityOnly = {
+      ...applicant,
+      externals: [{ data: { body: "https://behance.net/ivanov", city: "Тюмень" } }],
+    };
+    expect(mapApplicantToCandidate(cityOnly)!.location).toBe("Тюмень");
+  });
+
+  it("leaves location undefined when absent", () => {
+    const noLoc = {
+      ...applicant,
+      externals: [{ data: { body: "https://behance.net/ivanov" } }],
+    };
+    expect(mapApplicantToCandidate(noLoc)!.location).toBeUndefined();
+  });
+
+  it("survives missing or malformed externals", () => {
+    expect(mapApplicantToCandidate({ ...applicant, externals: [] })).toBeNull();
+    expect(mapApplicantToCandidate({ ...applicant, externals: undefined })).toBeNull();
+    expect(
+      mapApplicantToCandidate({ ...applicant, externals: [null, { data: null }] }),
+    ).toBeNull();
   });
 });

@@ -8,6 +8,8 @@
  * домены-помехи в denylist невозможно, а allowlist даёт чистый результат.
  */
 
+import type { CandidateImportRow } from "./import-types";
+
 const URL_RE = /https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&()*+,;=%']+/g;
 
 /**
@@ -143,4 +145,111 @@ export function classifyUrls(urls: string[]): ClassifiedUrls {
     .map((item) => item.url);
 
   return { portfolioLinks, telegram, linkedin };
+}
+
+export interface HuntflowExternal {
+  data?: {
+    body?: string;
+    city?: string;
+    area?: { name?: string } | null;
+  } | null;
+}
+
+export interface HuntflowApplicant {
+  first_name?: string;
+  last_name?: string;
+  middle_name?: string;
+  email?: string;
+  account_source?: unknown;
+  externals?: (HuntflowExternal | null)[];
+  [k: string]: unknown;
+}
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+/**
+ * Детектор формата. Одного `items` мало — другая выгрузка тоже может иметь
+ * такое поле. Проверяем маркерные поля Huntflow на первом элементе.
+ */
+export function isHuntflowExport(json: unknown): boolean {
+  if (!isRecord(json)) return false;
+  const items = json.items;
+  if (!Array.isArray(items)) return false;
+  // Пустой items считаем Huntflow-выгрузкой: иначе роут уйдёт в Behance-ветку
+  // и на структурно валидном файле Huntflow выдаст «не найдено профилей Behance».
+  if (items.length === 0) return true;
+  const first = items[0];
+  if (!isRecord(first)) return false;
+  return "externals" in first || "account_source" in first;
+}
+
+export function extractHuntflowApplicants(json: unknown): HuntflowApplicant[] {
+  if (!isHuntflowExport(json)) return [];
+  return (json as { items: HuntflowApplicant[] }).items;
+}
+
+function applicantName(a: HuntflowApplicant): string {
+  return [a.first_name, a.last_name]
+    .map((x) => (typeof x === "string" ? x.trim() : ""))
+    .filter(Boolean)
+    .join(" ");
+}
+
+function resumeBody(a: HuntflowApplicant): string {
+  return (a.externals ?? [])
+    .map((e) => e?.data?.body)
+    .filter((b): b is string => typeof b === "string" && b.length > 0)
+    .join("\n");
+}
+
+function applicantLocation(a: HuntflowApplicant): string | undefined {
+  for (const e of a.externals ?? []) {
+    const name = e?.data?.area?.name;
+    if (typeof name === "string" && name.trim()) return name.trim();
+  }
+  for (const e of a.externals ?? []) {
+    const city = e?.data?.city;
+    if (typeof city === "string" && city.trim()) return city.trim();
+  }
+  return undefined;
+}
+
+function applicantEmail(a: HuntflowApplicant): string | undefined {
+  const email = typeof a.email === "string" ? a.email.trim() : "";
+  if (!email) return undefined;
+  // office@huntflow.ru — служебный адрес системы, не кандидата
+  if (/@huntflow\.ru$/i.test(email)) return undefined;
+  return email;
+}
+
+/**
+ * Маппит applicant в строку импорта.
+ * null — если нет имени или нет ни одной ссылки на портфолио
+ * (людей без портфолио не импортируем, см. спеку).
+ */
+export function mapApplicantToCandidate(
+  a: HuntflowApplicant,
+): CandidateImportRow | null {
+  const name = applicantName(a);
+  if (!name) return null;
+
+  const { portfolioLinks, telegram, linkedin } = classifyUrls(
+    extractUrls(resumeBody(a)),
+  );
+  if (portfolioLinks.length === 0) return null;
+
+  return {
+    name,
+    portfolioLinks,
+    location: applicantLocation(a),
+    telegramContact: telegram,
+    email: applicantEmail(a),
+    linkedinUrl: linkedin,
+    role: "OTHER",
+    grade: "MIDDLE",
+    status: "NEW",
+    source: "huntflow",
+  };
 }
