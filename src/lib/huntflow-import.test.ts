@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { classifyUrls } from "./huntflow-import";
+import { classifyUrls, extractUrls } from "./huntflow-import";
 
 describe("classifyUrls — allowlist", () => {
   it("keeps known portfolio platforms", () => {
@@ -106,6 +106,20 @@ describe("classifyUrls — normalization", () => {
   it("ignores malformed urls without throwing", () => {
     const r = classifyUrls(["not-a-url", "http://", "https://behance.net/ok"]);
     expect(r.portfolioLinks).toEqual(["https://behance.net/ok"]);
+  });
+
+  // РЕГРЕССИЯ: в тексте резюме часто нет пробела между ссылкой и следующим
+  // словом. Старый URL_RE ([^\s"',)<>\]]+) не исключал кириллицу и заглатывал
+  // "Портфолио" в путь, из-за чего new URL() не падал, а тихо портил юзернейм
+  // (percent-encoding кириллицы в pathname) — ссылка вела на несуществующую
+  // страницу без единого сигнала об ошибке.
+  it("stops the URL at glued-on non-ASCII text (no separator after link)", () => {
+    const text = "https://behance.net/ivanovПортфолио дизайнера";
+    const urls = extractUrls(text);
+    expect(urls).toEqual(["https://behance.net/ivanov"]);
+
+    const r = classifyUrls(urls);
+    expect(r.portfolioLinks).toEqual(["https://behance.net/ivanov"]);
   });
 });
 
