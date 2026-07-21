@@ -26,22 +26,29 @@ export default function AnalyzeBatchBar() {
   const [initialized, setInitialized] = useState(false);
   const [limit, setLimit] = useState<number>(20);
   const [submitting, setSubmitting] = useState(false);
-  const [polling, setPolling] = useState(false);
+  // justLaunched блокирует кнопку ТОЛЬКО пока пачку запустили мы сами в этой
+  // вкладке — не путать с "есть отставание в очереди" (pending > 0), которое
+  // истинно почти всегда на большой базе и не означает, что анализ идёт прямо
+  // сейчас (сервер не хранит промежуточный статус "в обработке").
+  const [justLaunched, setJustLaunched] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pollCapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const launchCapRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const clearPolling = () => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
+  const clearLaunchLock = () => {
+    if (launchCapRef.current) {
+      clearTimeout(launchCapRef.current);
+      launchCapRef.current = null;
     }
-    if (pollCapRef.current) {
-      clearTimeout(pollCapRef.current);
-      pollCapRef.current = null;
+    setJustLaunched(false);
+  };
+
+  const stopRefresh = () => {
+    if (refreshIntervalRef.current) {
+      clearInterval(refreshIntervalRef.current);
+      refreshIntervalRef.current = null;
     }
-    setPolling(false);
   };
 
   const fetchStatus = async (): Promise<StatusResponse | null> => {
@@ -55,21 +62,22 @@ export default function AnalyzeBatchBar() {
     }
   };
 
-  const startPolling = () => {
-    clearPolling();
-    setPolling(true);
-    pollIntervalRef.current = setInterval(async () => {
+  // Обновление счётчиков — просто наблюдение, кнопку не трогает. Работает
+  // и после релоада страницы, и после запуска пачки, пока pending не обнулится
+  // или не истечёт 10-минутный потолок (страховка от вечного интервала).
+  const startRefresh = () => {
+    stopRefresh();
+    refreshIntervalRef.current = setInterval(async () => {
       const data = await fetchStatus();
       if (!data) return;
       setPending(data.pending);
       setFailed(data.failed);
       if (data.pending === 0) {
-        clearPolling();
+        stopRefresh();
+        clearLaunchLock();
       }
     }, POLL_INTERVAL_MS);
-    pollCapRef.current = setTimeout(() => {
-      clearPolling();
-    }, POLL_CAP_MS);
+    setTimeout(() => stopRefresh(), POLL_CAP_MS);
   };
 
   useEffect(() => {
@@ -80,7 +88,7 @@ export default function AnalyzeBatchBar() {
       if (data) {
         setPending(data.pending);
         setFailed(data.failed);
-        if (data.pending > 0) startPolling();
+        if (data.pending > 0) startRefresh();
       }
       setInitialized(true);
     })();
@@ -91,7 +99,10 @@ export default function AnalyzeBatchBar() {
   }, []);
 
   useEffect(() => {
-    return () => clearPolling();
+    return () => {
+      stopRefresh();
+      if (launchCapRef.current) clearTimeout(launchCapRef.current);
+    };
   }, []);
 
   const handleAnalyze = async () => {
@@ -105,7 +116,9 @@ export default function AnalyzeBatchBar() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `Ошибка ${res.status}`);
-      startPolling();
+      setJustLaunched(true);
+      launchCapRef.current = setTimeout(clearLaunchLock, POLL_CAP_MS);
+      startRefresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не удалось запустить анализ");
     } finally {
@@ -135,7 +148,7 @@ export default function AnalyzeBatchBar() {
           <option key={n} value={n}>{n}</option>
         ))}
       </select>
-      <Button size="sm" variant="accent" onClick={handleAnalyze} disabled={submitting || polling}>
+      <Button size="sm" variant="accent" onClick={handleAnalyze} disabled={submitting || justLaunched}>
         {submitting ? "Запускаю..." : "Проанализировать"}
       </Button>
       {error && <span className="text-xs text-red-500">{error}</span>}
