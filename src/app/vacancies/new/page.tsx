@@ -110,6 +110,10 @@ export default function NewVacancyPage() {
   const [fieldHints, setFieldHints] = useState<Map<string, FieldStatus>>(new Map());
   const audioInputRef = useRef<HTMLInputElement>(null);
 
+  // Free-text paste state
+  const [textInput, setTextInput] = useState("");
+  const [textParsing, setTextParsing] = useState(false);
+
   const update = <K extends keyof VacancyFormData>(
     field: K,
     value: VacancyFormData[K],
@@ -240,6 +244,37 @@ export default function NewVacancyPage() {
       setAudioParsing(false);
     }
   }, []);
+
+  // ── Free-text paste ──────────────────────────────────────────────
+  const handleTextParse = useCallback(async () => {
+    const text = textInput.trim();
+    if (text.length < 20) return;
+    setTextParsing(true);
+    setError("");
+    try {
+      const res = await fetch("/api/vacancies/parse-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error(json.error || `Ошибка ${res.status}`);
+      }
+      const { data: newData, hints } = buildFieldsUpdate(json.fields as ParsedFields);
+      setData((prev) => ({ ...prev, ...newData }));
+      setFieldHints(hints);
+      setBriefingLoaded(true); // прячет кнопки загрузки; summary-карточка не появится (briefingSummary остаётся null)
+    } catch (err) {
+      setError(
+        err instanceof Error
+          ? `AI не смог структурировать текст: ${err.message}. Заполните форму вручную.`
+          : "Не удалось обработать текст. Заполните форму вручную.",
+      );
+    } finally {
+      setTextParsing(false);
+    }
+  }, [textInput]);
 
   const canNext = () => {
     if (currentStep === 0) return data.title.trim().length > 0;
@@ -460,6 +495,42 @@ export default function NewVacancyPage() {
             </button>
           )}
         </div>
+
+        {/* Free-text paste — заполнение формы из вставленного текста */}
+        {!briefingLoaded && !pdfLoaded && !audioParsing && !pdfParsing && (
+          <div className="mb-8 space-y-2">
+            {textParsing ? (
+              <div className="flex items-center gap-3 rounded-lg border border-dashed border-foreground/20 bg-muted/30 px-5 py-4">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-foreground border-t-transparent" />
+                <span className="text-sm">
+                  AI анализирует текст и заполняет вакансию...
+                </span>
+              </div>
+            ) : (
+              <>
+                <textarea
+                  value={textInput}
+                  onChange={(e) => setTextInput(e.target.value)}
+                  disabled={textParsing}
+                  rows={5}
+                  placeholder="Вставьте описание вакансии: письмо от клиента, сообщение, заметки…"
+                  className="w-full rounded-lg border border-dashed border-foreground/20 bg-transparent px-5 py-4 text-sm placeholder:text-muted-foreground outline-none focus:border-foreground/40 transition-colors resize-y"
+                />
+                <button
+                  onClick={handleTextParse}
+                  disabled={textParsing || textInput.trim().length < 20}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-foreground/20 px-5 py-4 text-sm text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors disabled:opacity-50"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 20h9" />
+                    <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4z" />
+                  </svg>
+                  Заполнить из текста — AI структурирует вакансию
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         {/* Step indicator — hidden when PDF loaded and not editing */}
         <div className={`mb-8 flex gap-1 ${pdfLoaded ? "hidden" : ""}`}>
