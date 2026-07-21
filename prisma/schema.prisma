@@ -72,6 +72,7 @@ model Candidate {
   resumeRawText          String?
   portfolioLinks         String[]
   portfolioAnalysis      Json?
+  lastAnalysisError      String?
 
   // --- Семантический поиск ---
   embedding              Float[]   // вектор профиля (768 dims); пустой пока не сгенерирован
