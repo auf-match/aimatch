@@ -511,7 +511,7 @@ export default function NewVacancyPage() {
                 <textarea
                   value={textInput}
                   onChange={(e) => setTextInput(e.target.value)}
-                  disabled={textParsing}
+                  aria-label="Описание вакансии"
                   rows={5}
                   placeholder="Вставьте описание вакансии: письмо от клиента, сообщение, заметки…"
                   className="w-full rounded-lg border border-dashed border-foreground/20 bg-transparent px-5 py-4 text-sm placeholder:text-muted-foreground outline-none focus:border-foreground/40 transition-colors resize-y"
