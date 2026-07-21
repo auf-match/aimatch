@@ -8,6 +8,7 @@ interface ProcessingEntry {
   name: string;
   portfolioLink: string;
   startedAt: number;
+  elapsedSeconds: number;
 }
 
 interface FailedEntry {
@@ -36,7 +37,6 @@ function hostnameOf(link: string): string {
 export default function AnalyzeStatusPage() {
   const [data, setData] = useState<StatusDebugResponse | null>(null);
   const [fetchError, setFetchError] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -53,8 +53,6 @@ export default function AnalyzeStatusPage() {
       } catch {
         if (!active) return;
         setFetchError(true);
-      } finally {
-        if (active) setNow(Date.now());
       }
     };
 
@@ -90,21 +88,18 @@ export default function AnalyzeStatusPage() {
             <p className="text-sm text-muted-foreground">Сейчас никто не обрабатывается</p>
           ) : (
             <ul className="space-y-2">
-              {processing.map((p) => {
-                const elapsed = Math.max(0, Math.round((now - p.startedAt) / 1000));
-                return (
-                  <li key={p.id} className="text-sm flex items-center gap-2 flex-wrap">
-                    <Link
-                      href={`/candidates/${p.id}`}
-                      className="font-medium hover:underline"
-                    >
-                      {p.name}
-                    </Link>
-                    <span className="text-muted-foreground">{hostnameOf(p.portfolioLink)}</span>
-                    <span className="text-muted-foreground">{elapsed} с</span>
-                  </li>
-                );
-              })}
+              {processing.map((p) => (
+                <li key={p.id} className="text-sm flex items-center gap-2 flex-wrap">
+                  <Link
+                    href={`/candidates/${p.id}`}
+                    className="font-medium hover:underline"
+                  >
+                    {p.name}
+                  </Link>
+                  <span className="text-muted-foreground">{hostnameOf(p.portfolioLink)}</span>
+                  <span className="text-muted-foreground">{p.elapsedSeconds} с</span>
+                </li>
+              ))}
             </ul>
           )}
         </section>

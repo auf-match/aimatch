@@ -17,8 +17,14 @@ export async function GET() {
         where: { status: "NEW", source: sources, portfolioLinks: { isEmpty: false } },
       }),
     ]);
+    const now = Date.now();
+    const processing = getProcessing().map((p) => ({
+      ...p,
+      elapsedSeconds: Math.max(0, Math.round((now - p.startedAt) / 1000)),
+    }));
+
     return NextResponse.json({
-      processing: getProcessing(),
+      processing,
       failed,
       pending,
     });
