@@ -108,7 +108,9 @@ Expected: FAIL — `Failed to resolve import "./parse-fill"`.
 
 ```ts
 // Общие типы формы вакансии + чистая логика раскладки AI-распарсенных полей.
-// Используется и аудио-путём (parse-audio), и текстовым (parse-text).
+// Зовут клиентские хендлеры на /vacancies/new: аудио-путь (handleAudioUpload)
+// и текстовый (handleTextParse). Сами роуты parse-audio/parse-text только
+// возвращают fields — раскладку делает клиент.
 
 export interface ScoringCriterion {
   criterion: string;
@@ -249,7 +251,7 @@ Expected: PASS.
    ```
    (`INITIAL_DATA` и `FieldHintsContext` остаются в `page.tsx` — их не трогаем; `FieldHintsContext` использует импортированный теперь `FieldStatus`.)
    **Важно:** `type FieldStatus` сейчас объявлен ВЫШE блока импортов (строка 16, до `import {...} from "@/lib/constants"` на строке 23). Импорт из `./parse-fill` кладём в общий блок импортов, старое объявление на строке 16 удаляем — `FieldHintsContext` ниже подхватит импортированный тип.
-2. В аудио-хендлере заменить весь блок раскладки (от `const fields = json.fields as ...` до `setFieldHints(hints);` включительно, ~строки 270-333) на:
+2. В аудио-хендлере заменить весь блок раскладки (от `const fields = json.fields as ...` (строка ~270) до `setBriefingLoaded(true);` **включительно** (строка ~335) — то есть захватить и `setData`, и `setFieldHints`, и `setBriefingLoaded`, чтобы не остался дублирующий вызов) на:
    ```ts
    const { data: newData, hints } = buildFieldsUpdate(
      json.fields as import("./parse-fill").ParsedFields,
