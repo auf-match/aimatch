@@ -419,6 +419,46 @@ export default function NewVacancyPage() {
           </div>
         )}
 
+        {/* Заполненная форма (аудио/текст) — компактная сводка + сразу активная
+            кнопка «Создать вакансию», как у PDF-пути. Полная форма со степпером
+            скрыта, пока пользователь не нажмёт «Редактировать вручную». */}
+        {briefingLoaded && (
+          <div className="mb-8 space-y-4 rounded-lg border border-foreground/10 bg-muted/30 px-5 py-5">
+            <div className="space-y-2">
+              <p className="text-sm font-medium">{data.title || "Без названия"}</p>
+              <div className="flex flex-wrap gap-1.5 text-xs">
+                <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 font-medium text-secondary-foreground">{ROLE_LABELS[data.role] || data.role}</span>
+                <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 font-medium text-secondary-foreground">{GRADE_LABELS[data.grade] || data.grade}</span>
+                {data.workFormat && <span className="inline-flex items-center rounded-full border border-border bg-transparent px-2.5 py-0.5 text-foreground">{WORK_FORMAT_LABELS[data.workFormat] || data.workFormat}</span>}
+                {data.location && <span className="inline-flex items-center rounded-full border border-border bg-transparent px-2.5 py-0.5 text-foreground">{data.location}</span>}
+                {data.salaryRange && <span className="inline-flex items-center rounded-full border border-border bg-transparent px-2.5 py-0.5 text-foreground">{data.salaryRange}</span>}
+              </div>
+              {data.requiredSkills.length > 0 && (
+                <div className="flex flex-wrap gap-1 pt-1">
+                  {data.requiredSkills.slice(0, 6).map((s) => (
+                    <span key={s} className="rounded bg-neutral-200 px-1.5 py-0.5 text-[11px]">{s}</span>
+                  ))}
+                  {data.requiredSkills.length > 6 && (
+                    <span className="text-[11px] text-muted-foreground">+{data.requiredSkills.length - 6}</span>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Button onClick={handleSubmit} disabled={submitting} size="sm">
+                {submitting ? "Создание..." : "Создать вакансию"}
+              </Button>
+              <button
+                onClick={() => { setBriefingLoaded(false); setCurrentStep(0); }}
+                className="text-xs text-muted-foreground underline hover:text-foreground"
+              >
+                Редактировать вручную
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* PDF upload */}
         <div className="mb-8">
           <input
@@ -533,7 +573,7 @@ export default function NewVacancyPage() {
         )}
 
         {/* Step indicator — hidden when PDF loaded and not editing */}
-        <div className={`mb-8 flex gap-1 ${pdfLoaded ? "hidden" : ""}`}>
+        <div className={`mb-8 flex gap-1 ${pdfLoaded || briefingLoaded ? "hidden" : ""}`}>
           {STEPS.map((label, i) => (
             <button
               key={i}
@@ -561,7 +601,7 @@ export default function NewVacancyPage() {
 
         {/* Step content — hidden when PDF loaded and not editing */}
         <FieldHintsContext.Provider value={fieldHints}>
-        <div className={`space-y-6 ${pdfLoaded ? "hidden" : ""}`}>
+        <div className={`space-y-6 ${pdfLoaded || briefingLoaded ? "hidden" : ""}`}>
           {currentStep === 0 && <Step1 data={data} update={update} />}
           {currentStep === 1 && <Step2 data={data} update={update} />}
           {currentStep === 2 && <Step3 data={data} update={update} />}
