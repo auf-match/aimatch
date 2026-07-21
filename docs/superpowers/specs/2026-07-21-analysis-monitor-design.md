@@ -40,7 +40,17 @@ export function markFinished(id: string): void;
 export function getProcessing(): ProcessingEntry[]; // снимок, отсортирован по startedAt
 ```
 
-**Важно про синглтон в dev-режиме:** Next.js в dev пересобирает модули на hot-reload, из-за чего модульная переменная может пересоздаться и трекер потеряет записи посреди прогона. Кладём Map в `globalThis` (стандартный Next.js-приём против hot-reload; в `src/server/db.ts` его сейчас НЕ применяют — там просто `new PrismaClient()`, так что образца в проекте нет, делаем по канону: `globalThis.__analysisTracker ??= new Map()`), чтобы состояние переживало пересборку. В проде (один процесс, без hot-reload) это тоже безопасно.
+**Важно про синглтон в dev-режиме:** Next.js в dev пересобирает модули на hot-reload, из-за чего модульная переменная может пересоздаться и трекер потеряет записи посреди прогона. Кладём Map в `globalThis` (стандартный Next.js-приём против hot-reload; в `src/server/db.ts` его сейчас НЕ применяют — там просто `new PrismaClient()`, так что образца в проекте нет). В проде (один процесс, без hot-reload) это тоже безопасно.
+
+**Обязательно — типизация global (проект на `strict: true`):** доступ к `globalThis.__analysisTracker` без объявления не компилируется (TS2339). В проекте нет ни одного global-augmentation для образца, поэтому объявляем прямо в модуле трекера:
+```ts
+declare global {
+  // eslint-disable-next-line no-var
+  var __analysisTracker: Map<string, ProcessingEntry> | undefined;
+}
+const processing: Map<string, ProcessingEntry> =
+  (globalThis.__analysisTracker ??= new Map());
+```
 
 ### 2. Инструментирование `candidate-analysis.ts`
 
