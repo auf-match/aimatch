@@ -8,6 +8,7 @@ const NAV_ITEMS = [
   { href: "/candidates", label: "Кандидаты", icon: UsersIcon },
   { href: "/vacancies", label: "Вакансии", icon: BriefcaseIcon },
   { href: "/pipeline", label: "Этапы", icon: ColumnsIcon },
+  { href: "/candidates/analyze-status", label: "Анализ", icon: ActivityIcon },
 ];
 
 const QUICK_ITEMS = [
@@ -36,8 +37,13 @@ export function Sidebar() {
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-1 space-y-0.5">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          const isActive =
-            href === "/" ? pathname === "/" : pathname.startsWith(href);
+          // Несколько пунктов могут совпасть по startsWith (например
+          // /candidates и /candidates/analyze-status) — активен только
+          // пункт с самым длинным (самым специфичным) совпадением.
+          const bestMatch = NAV_ITEMS
+            .filter((item) => (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)))
+            .sort((a, b) => b.href.length - a.href.length)[0];
+          const isActive = bestMatch?.href === href;
           return (
             <Link
               key={href}
@@ -126,6 +132,14 @@ function ColumnsIcon() {
       <rect x="3" y="3" width="5" height="18" rx="1" />
       <rect x="10" y="3" width="5" height="18" rx="1" />
       <rect x="17" y="3" width="4" height="18" rx="1" />
+    </svg>
+  );
+}
+
+function ActivityIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
     </svg>
   );
 }
