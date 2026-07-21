@@ -13,7 +13,6 @@ import Link from "next/link";
 //   "low" — AI неуверен (жёлтая рамка)
 //   "missing" — AI не нашёл значение (серая dashed рамка)
 // При первом редактировании поля пользователем статус снимается.
-type FieldStatus = "low" | "missing";
 const FieldHintsContext = createContext<Map<string, FieldStatus> | null>(null);
 function useFieldStatus(field?: string): FieldStatus | undefined {
   const ctx = useContext(FieldHintsContext);
@@ -31,6 +30,7 @@ import {
   type VacancyFormData,
   type ScoringCriterion,
   type ParsedFields,
+  type FieldStatus,
 } from "./parse-fill";
 
 // ── Types ────────────────────────────────────────────────────────────
