@@ -55,4 +55,19 @@ describe("buildFieldsUpdate", () => {
     const { data } = buildFieldsUpdate(fields);
     expect("totallyUnknown" in data).toBe(false);
   });
+
+  it("scoringCriteria — массив объектов проходит без изменений, пустой даёт missing", () => {
+    const criteria = [{ criterion: "Опыт в fintech", weight: 40, type: "required" as const }];
+    const filled = buildFieldsUpdate({
+      scoringCriteria: { value: criteria, confidence: "high" },
+    });
+    expect(filled.data.scoringCriteria).toEqual(criteria);
+    expect(filled.hints.size).toBe(0);
+
+    const empty = buildFieldsUpdate({
+      scoringCriteria: { value: [], confidence: null },
+    });
+    expect(empty.data.scoringCriteria).toEqual([]);
+    expect(empty.hints.get("scoringCriteria")).toBe("missing");
+  });
 });
