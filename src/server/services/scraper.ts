@@ -81,6 +81,10 @@ function isNotionUrl(url: string): boolean {
  */
 async function extractPageText(page: Parameters<typeof chromium.launch>[0] extends undefined ? never : Awaited<ReturnType<Browser["newPage"]>>): Promise<string> {
   return page.evaluate(() => {
+    // body может быть null (навигация/редирект Notion в процессе) —
+    // без этой проверки createTreeWalker(null) падает "not of type Node".
+    if (!document.body) return "";
+
     const remove = document.querySelectorAll(
       "script, style, noscript, svg, iframe, [aria-hidden='true']"
     );
@@ -147,7 +151,9 @@ async function scrapeNotion(
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.waitForTimeout(500);
 
-  const title = await page.title();
+  // .catch — Notion может редиректнуть во время вызова ("context destroyed"),
+  // тогда не роняем весь скрейп, а продолжаем с пустым заголовком.
+  const title = await page.title().catch(() => "");
   const text = await extractPageText(page);
 
   // Collect internal links (case study pages)
@@ -171,7 +177,7 @@ async function scrapeNotion(
       })
       .filter(Boolean)
       .slice(0, 8) as string[];
-  }, url);
+  }, url).catch((): string[] => []); // навигация могла уничтожить контекст
 
   return { text, title, internalLinks };
 }
@@ -191,7 +197,9 @@ async function scrapeRegular(
   await waitForReady(page);
   await page.waitForTimeout(500);
 
-  const title = await page.title();
+  // .catch — Notion может редиректнуть во время вызова ("context destroyed"),
+  // тогда не роняем весь скрейп, а продолжаем с пустым заголовком.
+  const title = await page.title().catch(() => "");
 
   const pageHeight: number = await safePageHeight(page);
   const viewportHeight = 900;
@@ -221,7 +229,7 @@ async function scrapeRegular(
       })
       .filter(Boolean)
       .slice(0, 10) as string[];
-  }, url);
+  }, url).catch((): string[] => []); // навигация могла уничтожить контекст
 
   return { text, title, internalLinks };
 }
