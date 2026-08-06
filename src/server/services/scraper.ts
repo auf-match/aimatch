@@ -1,5 +1,6 @@
 import { chromium, type Browser } from "playwright";
 import { isFigmaUrl, scrapeFigma, FigmaScraperError } from "./figma-scraper";
+import { selectCaseLinks, type LinkCandidate } from "@/lib/case-links";
 
 export class ScraperError extends Error {
   constructor(message: string) {
@@ -16,6 +17,7 @@ interface ScrapeResult {
 }
 
 let browserInstance: Browser | null = null;
+let cachedUserAgent: string | null = null;
 
 async function getBrowser(): Promise<Browser> {
   if (browserInstance && browserInstance.isConnected()) {
@@ -31,6 +33,27 @@ async function getBrowser(): Promise<Browser> {
     ],
   });
   return browserInstance;
+}
+
+/**
+ * User-agent для контекста. Берём РЕАЛЬНЫЙ UA запущенного Chromium и убираем
+ * токен "Headless" — так версия Chrome всегда актуальна (растёт вместе с
+ * Playwright) и совпадает с движком. Раньше UA был захардкожен "Chrome/124":
+ * Notion считал такой браузер устаревшим и редиректил на unsupported-browser.html
+ * (пустая заглушка → "страница не отрисовала контент"). Привязка к настоящей
+ * версии не даёт этому повториться при следующем устаревании.
+ */
+async function getUserAgent(browser: Browser): Promise<string> {
+  if (cachedUserAgent) return cachedUserAgent;
+  const probe = await browser.newContext();
+  try {
+    const page = await probe.newPage();
+    const ua = await page.evaluate(() => navigator.userAgent);
+    cachedUserAgent = ua.replace(/HeadlessChrome/g, "Chrome");
+  } finally {
+    await probe.close();
+  }
+  return cachedUserAgent;
 }
 
 /**
@@ -113,7 +136,7 @@ async function scrapeNotion(
   page: Awaited<ReturnType<Browser["newPage"]>>,
   url: string,
   screenshots: Buffer[]
-): Promise<{ text: string; title: string; internalLinks: string[] }> {
+): Promise<{ text: string; title: string; candidates: LinkCandidate[] }> {
   // Navigate — use 'commit' (fires on first byte), then wait for content ourselves.
   // Таймаут срезан 60→30с: мёртвые notion.site (unpublished) висят, а живые
   // отвечают быстро — нет смысла ждать минуту на каждой битой ссылке.
@@ -156,30 +179,34 @@ async function scrapeNotion(
   const title = await page.title().catch(() => "");
   const text = await extractPageText(page);
 
-  // Collect internal links (case study pages)
-  const internalLinks: string[] = await page.evaluate((baseUrl: string) => {
+  // Collect internal link candidates (для умного отбора кейсов в Node)
+  const candidates: LinkCandidate[] = await page.evaluate((baseUrl: string) => {
     const base = new URL(baseUrl);
-    return Array.from(document.querySelectorAll("a[href]"))
-      .map((a) => {
-        try {
-          const href = new URL((a as HTMLAnchorElement).getAttribute("href") || "", base);
-          if (
-            (href.hostname === base.hostname || href.hostname.endsWith(".notion.so") || href.hostname.endsWith(".notion.site")) &&
-            href.pathname !== base.pathname &&
-            !href.href.includes("?v=") // skip database view URLs
-          ) {
-            return href.toString();
-          }
-        } catch {
-          // skip
+    const out: { href: string; text: string; nav: boolean }[] = [];
+    for (const a of Array.from(document.querySelectorAll("a[href]"))) {
+      try {
+        const el = a as HTMLAnchorElement;
+        const href = new URL(el.getAttribute("href") || "", base);
+        if (
+          (href.hostname === base.hostname || href.hostname.endsWith(".notion.so") || href.hostname.endsWith(".notion.site")) &&
+          href.pathname !== base.pathname &&
+          !href.href.includes("?v=") // skip database view URLs
+        ) {
+          out.push({
+            href: href.toString(),
+            text: (el.textContent || "").trim().slice(0, 120),
+            nav: !!el.closest("header,nav,footer,aside,[role=navigation]"),
+          });
         }
-        return null;
-      })
-      .filter(Boolean)
-      .slice(0, 8) as string[];
-  }, url).catch((): string[] => []); // навигация могла уничтожить контекст
+      } catch {
+        // skip
+      }
+      if (out.length >= 40) break;
+    }
+    return out;
+  }, url).catch((): LinkCandidate[] => []); // навигация могла уничтожить контекст
 
-  return { text, title, internalLinks };
+  return { text, title, candidates };
 }
 
 /**
@@ -189,7 +216,7 @@ async function scrapeRegular(
   page: Awaited<ReturnType<Browser["newPage"]>>,
   url: string,
   screenshots: Buffer[]
-): Promise<{ text: string; title: string; internalLinks: string[] }> {
+): Promise<{ text: string; title: string; candidates: LinkCandidate[] }> {
   // "commit" — faster than "networkidle"; avoids timeouts on JS-heavy sites like alla.studio
   await page.goto(url, { waitUntil: "commit", timeout: 60000 });
   // Ждём реальный body вместо фиксированной паузы (страница могла редиректнуть
@@ -213,25 +240,29 @@ async function scrapeRegular(
 
   const text = await extractPageText(page);
 
-  const internalLinks: string[] = await page.evaluate((baseUrl: string) => {
+  const candidates: LinkCandidate[] = await page.evaluate((baseUrl: string) => {
     const base = new URL(baseUrl);
-    return Array.from(document.querySelectorAll("a[href]"))
-      .map((a) => {
-        try {
-          const href = new URL((a as HTMLAnchorElement).getAttribute("href") || "", base);
-          if (href.hostname === base.hostname && href.pathname !== base.pathname) {
-            return href.toString();
-          }
-        } catch {
-          // skip
+    const out: { href: string; text: string; nav: boolean }[] = [];
+    for (const a of Array.from(document.querySelectorAll("a[href]"))) {
+      try {
+        const el = a as HTMLAnchorElement;
+        const href = new URL(el.getAttribute("href") || "", base);
+        if (href.hostname === base.hostname && href.pathname !== base.pathname) {
+          out.push({
+            href: href.toString(),
+            text: (el.textContent || "").trim().slice(0, 120),
+            nav: !!el.closest("header,nav,footer,aside,[role=navigation]"),
+          });
         }
-        return null;
-      })
-      .filter(Boolean)
-      .slice(0, 10) as string[];
-  }, url).catch((): string[] => []); // навигация могла уничтожить контекст
+      } catch {
+        // skip
+      }
+      if (out.length >= 40) break;
+    }
+    return out;
+  }, url).catch((): LinkCandidate[] => []); // навигация могла уничтожить контекст
 
-  return { text, title, internalLinks };
+  return { text, title, candidates };
 }
 
 /**
@@ -289,10 +320,10 @@ export async function scrapePortfolio(url: string): Promise<ScrapeResult> {
 /** Одна попытка скрейпа: свежий контекст, без ретрая. Бросает сырую ошибку. */
 async function scrapeOnce(url: string): Promise<ScrapeResult> {
   const browser = await getBrowser();
+  const userAgent = await getUserAgent(browser);
   const context = await browser.newContext({
     viewport: { width: 1440, height: 900 },
-    userAgent:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    userAgent,
     locale: "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7",
     extraHTTPHeaders: {
       "Accept-Language": "ru-RU,ru;q=0.9,en-US;q=0.8",
@@ -315,7 +346,7 @@ async function scrapeOnce(url: string): Promise<ScrapeResult> {
   const viewportHeight = 900;
 
   try {
-    const { text, title, internalLinks } = notion
+    const { text, title, candidates } = notion
       ? await scrapeNotion(page, url, screenshots)
       : await scrapeRegular(page, url, screenshots);
 
@@ -326,9 +357,11 @@ async function scrapeOnce(url: string): Promise<ScrapeResult> {
       throw new Error("страница не отрисовала контент");
     }
 
-    // Scrape up to 3 case study sub-pages
+    // Умный отбор кейсов: отсекаем служебные страницы (About/Contacts),
+    // ранжируем «похожее на кейс», берём топ-5 (раньше — первые 3 в DOM-порядке,
+    // из-за чего сильные кейсы ниже по странице терялись).
     let caseStudyText = "";
-    const caseLinks = internalLinks.slice(0, 3);
+    const caseLinks = selectCaseLinks(candidates, url, 5);
 
     for (const caseUrl of caseLinks) {
       try {
@@ -377,7 +410,7 @@ async function scrapeOnce(url: string): Promise<ScrapeResult> {
       caseStudyText,
     ]
       .join("\n")
-      .slice(0, 30000);
+      .slice(0, 45000);
 
     console.log(
       `[scraper] ${url}: ${fullText.length} chars, ${screenshots.length} screenshots, ${caseLinks.length} sub-pages`

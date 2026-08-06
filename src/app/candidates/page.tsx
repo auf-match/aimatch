@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { FilterSelect } from "@/components/ui/filter-select";
 import Link from "next/link";
 import {
   ROLE_LABELS,
@@ -264,38 +265,30 @@ export default function CandidatesPage() {
               className="h-9 rounded-[var(--r-button)] border border-input bg-card pl-8 pr-3 text-sm outline-none shadow-[0_1px_3px_0_oklch(0_0_0/0.05)] focus:border-primary/50 focus:ring-3 focus:ring-primary/15 w-60 transition-[border-color,box-shadow]"
             />
           </div>
-          <select
+          <FilterSelect
             value={role}
-            onChange={(e) => setRole(e.target.value)}
-            className="h-9 rounded-[var(--r-button)] border border-input bg-card px-3 text-sm outline-none shadow-[0_1px_3px_0_oklch(0_0_0/0.05)] focus:border-primary/50 transition-[border-color]"
-          >
-            <option value="">Все роли</option>
-            {ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
-          </select>
-          <select
+            onChange={setRole}
+            placeholder="Все роли"
+            options={ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
+          />
+          <FilterSelect
             value={grade}
-            onChange={(e) => setGrade(e.target.value)}
-            className="h-9 rounded-[var(--r-button)] border border-input bg-card px-3 text-sm outline-none shadow-[0_1px_3px_0_oklch(0_0_0/0.05)] focus:border-primary/50 transition-[border-color]"
-          >
-            <option value="">Все грейды</option>
-            {GRADES.map((g) => <option key={g} value={g}>{GRADE_LABELS[g]}</option>)}
-          </select>
-          <select
+            onChange={setGrade}
+            placeholder="Все грейды"
+            options={GRADES.map((g) => ({ value: g, label: GRADE_LABELS[g] }))}
+          />
+          <FilterSelect
             value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="h-9 rounded-[var(--r-button)] border border-input bg-card px-3 text-sm outline-none shadow-[0_1px_3px_0_oklch(0_0_0/0.05)] focus:border-primary/50 transition-[border-color]"
-          >
-            <option value="">Все статусы</option>
-            {STATUSES.map((s) => <option key={s} value={s}>{STATUS_LABELS[s]}</option>)}
-          </select>
-          <select
+            onChange={setStatus}
+            placeholder="Все статусы"
+            options={STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] }))}
+          />
+          <FilterSelect
             value={platform}
-            onChange={(e) => setPlatform(e.target.value)}
-            className="h-9 rounded-[var(--r-button)] border border-input bg-card px-3 text-sm outline-none shadow-[0_1px_3px_0_oklch(0_0_0/0.05)] focus:border-primary/50 transition-[border-color]"
-          >
-            <option value="">Все платформы</option>
-            {PLATFORM_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
+            onChange={setPlatform}
+            placeholder="Все платформы"
+            options={PLATFORM_OPTIONS.map((p) => ({ value: p, label: p }))}
+          />
           {hasFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">
               Сбросить

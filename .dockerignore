@@ -1,0 +1,13 @@
+# Не тащим в build-контекст лишнее и тяжёлое.
+node_modules
+.next
+.git
+.env
+uploads
+scripts/data          # 94MB Huntflow-экспорт с PII — никогда в образ
+docs
+*.md
+.DS_Store
+.superpowers
+dist
+*.tsbuildinfo

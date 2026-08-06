@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { FilterSelect } from "@/components/ui/filter-select";
 import Link from "next/link";
 import {
   ROLE_LABELS,
@@ -105,15 +106,13 @@ export default function VacanciesPage() {
             { value: role, onChange: setRole, options: ROLES, labels: ROLE_LABELS, placeholder: "Все роли" },
             { value: grade, onChange: setGrade, options: GRADES, labels: GRADE_LABELS, placeholder: "Все грейды" },
           ].map(({ value, onChange, options, labels, placeholder }) => (
-            <select
+            <FilterSelect
               key={placeholder}
               value={value}
-              onChange={(e) => onChange(e.target.value)}
-              className="h-9 [border-radius:var(--r-button)] border border-input bg-card px-3 text-sm outline-none shadow-[0_1px_3px_0_oklch(0_0_0/0.05)] focus:border-primary/50 transition-[border-color]"
-            >
-              <option value="">{placeholder}</option>
-              {options.map((o) => <option key={o} value={o}>{(labels as Record<string,string>)[o]}</option>)}
-            </select>
+              onChange={onChange}
+              placeholder={placeholder}
+              options={options.map((o) => ({ value: o, label: (labels as Record<string, string>)[o] }))}
+            />
           ))}
           {hasFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters} className="text-muted-foreground">

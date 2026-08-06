@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { dropdownMotion } from "@/lib/motion-dropdown";
 import { useRouter } from "next/navigation";
 import {
   PIPELINE_STAGE_ORDER,
@@ -69,9 +71,10 @@ function MoveMenu({ row, anchorRect, onMove, onOpenCandidate, onOpenVacancy, onC
         if (popupRef.current && !popupRef.current.contains(e.target as Node)) onClose();
       }}
     >
-      <div
+      <motion.div
         ref={popupRef}
-        className="absolute rounded-xl border border-border bg-white dark:bg-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,.4)] p-1.5"
+        {...dropdownMotion}
+        className="absolute origin-top rounded-xl border border-border bg-popover/95 shadow-[0_20px_60px_rgba(0,0,0,.4)] backdrop-blur-sm p-1.5"
         style={{ left, top, width: popupWidth }}
       >
         <div className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -103,7 +106,7 @@ function MoveMenu({ row, anchorRect, onMove, onOpenCandidate, onOpenVacancy, onC
         >
           <span className="text-muted-foreground">↗</span> Открыть вакансию
         </button>
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -176,6 +179,25 @@ function VacancyFilter({
   const ref = useRef<HTMLDivElement>(null);
   const label = selected.size === 0 ? "все" : `выбрано ${selected.size}`;
 
+  // Закрытие по клику вне дропдауна. Слушаем document, только пока открыт.
+  // Клик по триггеру/панели (внутри ref) не закрывает — панель мультиселект,
+  // в ней тыкают несколько вакансий подряд.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onEsc);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onEsc);
+    };
+  }, [open]);
+
   return (
     <div className="relative" ref={ref}>
       <button
@@ -184,13 +206,12 @@ function VacancyFilter({
       >
         Вакансия: {label} <span className="text-muted-foreground">▾</span>
       </button>
+      <AnimatePresence>
       {open && (
-        <div className="fixed inset-0 z-40" onMouseDown={(e) => {
-          if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-        }} />
-      )}
-      {open && (
-        <div className="absolute z-50 mt-1 max-h-[320px] w-[300px] overflow-y-auto rounded-xl border border-border bg-white dark:bg-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,.3)] p-1.5">
+        <motion.div
+          {...dropdownMotion}
+          className="absolute z-50 mt-1 max-h-[320px] w-[300px] overflow-y-auto rounded-xl border border-border bg-popover/95 shadow-[0_20px_60px_rgba(0,0,0,.3)] backdrop-blur-sm p-1.5"
+        >
           <button
             className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] text-foreground hover:bg-muted/60"
             onClick={() => { onReset(); }}
@@ -208,8 +229,9 @@ function VacancyFilter({
               <span className="truncate">{v.title}{v.clientName ? ` · ${v.clientName}` : ""}</span>
             </button>
           ))}
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }

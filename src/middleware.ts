@@ -57,6 +57,9 @@ function unauthorized() {
 }
 
 // Не защищаем статику Next и фавикон — на них всё равно нет смысла.
+// /api/candidates/ingest выведен из-под Basic Auth: у него собственная
+// токен-авторизация (X-Ingest-Token), чтобы внешняя интеграция не требовала
+// общего пароля приложения и легко отзывалась сменой токена.
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|api/candidates/ingest).*)"],
 };

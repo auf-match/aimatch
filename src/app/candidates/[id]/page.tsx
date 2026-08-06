@@ -7,6 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
 import { ROLE_LABELS, GRADE_LABELS, STATUS_LABELS } from "@/lib/constants";
 import CandidatePipelines from "./candidate-pipelines";
+import SourceEditor from "./source-editor";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -70,6 +71,7 @@ interface CandidateDetail {
   telegramContact: string | null;
   email: string | null;
   linkedinUrl: string | null;
+  source: string | null;
   portfolioLinks: string[];
   experiences: Experience[];
   notes: Note[];
@@ -428,6 +430,7 @@ export default function CandidatePage({
                       <div className="flex items-center gap-2 mt-2.5 flex-wrap">
                         <span className="inline-flex items-center rounded-full bg-secondary px-2.5 py-0.5 text-xs font-medium text-secondary-foreground">{GRADE_LABELS[candidate.grade] || candidate.grade}</span>
                         <span className="inline-flex items-center rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">{STATUS_LABELS[candidate.status] || candidate.status}</span>
+                        <SourceEditor candidateId={candidate.id} initialSource={candidate.source} />
                         {candidate.portfolioLinks[0] && (
                           <a
                             href={candidate.portfolioLinks[0]}

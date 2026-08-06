@@ -8,7 +8,7 @@ interface StatusResponse {
   failed: number;
 }
 
-const LIMIT_OPTIONS = [10, 20, 50] as const;
+const LIMIT_OPTIONS = [10, 20, 50, 100] as const;
 const POLL_INTERVAL_MS = 5000;
 const POLL_CAP_MS = 10 * 60 * 1000;
 
@@ -141,7 +141,7 @@ export default function AnalyzeBatchBar() {
       <select
         value={limit}
         onChange={(e) => setLimit(Number(e.target.value))}
-        title="50 может не успеть за один заход — недообработанные останутся в очереди"
+        title="Большие пачки (50–100) обрабатываются дольше — недоделанные останутся в очереди и подхватятся следующим заходом"
         className="h-8 rounded-[var(--r-button)] border border-input bg-card px-2 text-sm outline-none shadow-[0_1px_3px_0_oklch(0_0_0/0.05)] focus:border-primary/50 transition-[border-color]"
       >
         {LIMIT_OPTIONS.map((n) => (

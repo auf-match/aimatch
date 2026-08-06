@@ -102,14 +102,14 @@ router.post(
 
           experiences: {
             create: (candidateData.experiences || []).map((exp) => ({
-              company: exp.company,
-              role: exp.role,
+              company: exp.company || "Не указано",
+              role: exp.role || "Не указано",
               startDate: exp.startDate,
               endDate: exp.endDate,
               duration: exp.duration,
-              keyAchievements: exp.keyAchievements,
-              isBigtech: exp.isBigtech,
-              isStudio: exp.isStudio,
+              keyAchievements: exp.keyAchievements || [],
+              isBigtech: exp.isBigtech ?? false,
+              isStudio: exp.isStudio ?? false,
             })),
           },
         },

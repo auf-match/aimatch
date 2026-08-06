@@ -7,34 +7,13 @@ import {
   mapApplicantToCandidate,
 } from "@/lib/huntflow-import";
 import type { CandidateImportRow } from "@/lib/import-types";
+import { dedupKey } from "@/lib/candidate-dedup";
 
 export const maxDuration = 300;
 
 /** Первая ссылка — самая содержательная (парсеры сортируют по тиру). */
 function primaryUrlOf(row: CandidateImportRow): string {
   return row.portfolioLinks[0];
-}
-
-/**
- * Канонический ключ для дедупа. Huntflow-парсер отдаёт канон (https, без www,
- * без хвостового слэша), а Behance-парсер пишет URL как есть из выгрузки —
- * поэтому в базе один и тот же профиль может лежать в любой форме.
- *
- * Ключ применяется к ОБЕИМ сторонам сравнения. Перебирать варианты нельзя:
- * такой перебор односторонний (добавляет www, но не убирает) и не покрывает
- * хвостовой слэш — повторная загрузка Behance-файла после Huntflow-импорта
- * продублировала бы всех пересекающихся людей.
- */
-function dedupKey(url: string): string {
-  const stripped = url
-    .trim()
-    .replace(/^https?:\/\//i, "")
-    .replace(/^www\./i, "")
-    .replace(/\/+$/, "");
-  const slashIndex = stripped.indexOf("/");
-  const host = (slashIndex === -1 ? stripped : stripped.slice(0, slashIndex)).toLowerCase();
-  const path = slashIndex === -1 ? "" : stripped.slice(slashIndex);
-  return host + path;
 }
 
 export async function POST(req: NextRequest) {

@@ -36,6 +36,7 @@ import {
   EMBEDDING_MODEL,
 } from "@/server/services/embeddings";
 import { isDeadBehancePage } from "@/lib/behance-import";
+import { detectSourceFromUrl } from "@/lib/source-detect";
 import { markStarted, markFinished } from "@/server/services/analysis-tracker";
 import type { Prisma } from "@prisma/client";
 
@@ -51,6 +52,7 @@ export async function analyzeImportedCandidate(candidateId: string): Promise<voi
         telegramContact: true,
         email: true,
         linkedinUrl: true,
+        source: true,
       },
     });
     if (!candidate) return;
@@ -140,6 +142,10 @@ export async function analyzeImportedCandidate(candidateId: string): Promise<voi
           linkedinUrl: data.linkedinUrl ?? candidate.linkedinUrl,
 
           resumeRawText: scrape.text,
+
+          // Источник: заполняем автоматически по ссылке, только если ещё пусто
+          // (не затираем импортные "behance"/"huntflow" и ручные значения).
+          ...(candidate.source ? {} : { source: detectSourceFromUrl(link) }),
 
           // Стадия анализа портфолио не удалась — НЕ трогаем portfolioAnalysis
           // (undefined = "не обновлять поле" в Prisma), статус остаётся PARSED.

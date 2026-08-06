@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pipeline Mockup — АУФ Match</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;
+    background: #0f0f11;
+    color: #e8e8ed;
+    min-height: 100vh;
+  }
+
+  /* NAV */
+  nav {
+    background: #18181b;
+    border-bottom: 1px solid #2a2a2f;
+    padding: 0 24px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .nav-logo { font-weight: 700; font-size: 15px; color: #fff; letter-spacing: -0.3px; margin-right: 16px; }
+  .nav-tab {
+    padding: 6px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #888;
+    cursor: pointer;
+    transition: all .15s;
+    font-weight: 500;
+    border: none;
+    background: none;
+  }
+  .nav-tab:hover { background: #2a2a2f; color: #ccc; }
+  .nav-tab.active { background: #27272a; color: #fff; }
+
+  /* SECTION TABS */
+  .section-header {
+    padding: 24px 24px 0;
+    border-bottom: 1px solid #2a2a2f;
+    background: #18181b;
+  }
+  .section-title {
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title .badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #27272a;
+    color: #888;
+    letter-spacing: 0;
+  }
+  .view-tabs {
+    display: flex;
+    gap: 2px;
+  }
+  .view-tab {
+    padding: 8px 16px;
+    font-size: 13px;
+    color: #666;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    transition: all .15s;
+    font-weight: 500;
+  }
+  .view-tab:hover { color: #aaa; }
+  .view-tab.active { color: #fff; border-bottom-color: #fff; }
+
+  /* BOARD WRAPPER */
+  .board-wrapper {
+    overflow-x: auto;
+    padding: 20px 24px 32px;
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+  }
+  .board-wrapper::-webkit-scrollbar { height: 6px; }
+  .board-wrapper::-webkit-scrollbar-track { background: transparent; }
+  .board-wrapper::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+  .board {
+    display: flex;
+    gap: 10px;
+    min-width: max-content;
+    align-items: flex-start;
+  }
+
+  /* COLUMN */
+  .col {
+    width: 220px;
+    flex-shrink: 0;
+    background: #18181b;
+    border: 1px solid #2a2a2f;
+    border-radius: 12px;
+    overflow: hidden;
+  }
+  .col-header {
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid #2a2a2f;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .col-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .col-name {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .col-count {
+    font-size: 11px;
+    color: #555;
+    font-weight: 500;
+  }
+  .col-cards {
+    padding: 8px;
+    min-height: 60px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  /* CANDIDATE CARD */
+  .cand-card {
+    background: #1e1e22;
+    border: 1px solid #2e2e34;
+    border-radius: 8px;
+    padding: 10px 10px 8px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    position: relative;
+  }
+  .cand-card:hover { border-color: #444; background: #222228; }
+  .cand-card .name {
+    font-size: 13px;
+    font-weight: 500;
+    color: #e0e0e6;
+    margin-bottom: 3px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cand-card .role {
+    font-size: 11px;
+    color: #666;
+    margin-bottom: 6px;
+  }
+  .cand-card .meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .cand-card .score {
+    font-size: 11px;
+    font-weight: 600;
+    color: #22c55e;
+    background: rgba(34,197,94,.1);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+  .cand-card .score.mid { color: #f59e0b; background: rgba(245,158,11,.1); }
+  .cand-card .score.low { color: #ef4444; background: rgba(239,68,68,.1); }
+  .cand-card .days {
+    font-size: 11px;
+    color: #555;
+    margin-left: auto;
+  }
+
+  /* MENU (overlay) */
+  .menu-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: none;
+  }
+  .menu-overlay.open { display: block; }
+  .menu-backdrop {
+    position: absolute;
+    inset: 0;
+  }
+  .menu-popup {
+    position: absolute;
+    background: #1e1e22;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 6px;
+    width: 240px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.6);
+    z-index: 10;
+  }
+  .menu-header {
+    padding: 8px 10px 6px;
+    font-size: 11px;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+  }
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 7px;
+    cursor: pointer;
+    transition: background .12s;
+    font-size: 13px;
+    color: #ccc;
+  }
+  .menu-item:hover { background: #2a2a2f; }
+  .menu-item .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .menu-item .arrow { margin-left: auto; color: #444; font-size: 12px; }
+  .menu-divider { height: 1px; background: #2a2a2f; margin: 4px 0; }
+
+  /* ========================
+     CANDIDATE CARD VIEW
+  ======================== */
+  .page { display: none; }
+  .page.active { display: block; }
+
+  .candidate-layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 0;
+    min-height: calc(100vh - 52px);
+  }
+  .cand-sidebar {
+    background: #18181b;
+    border-right: 1px solid #2a2a2f;
+    padding: 24px 20px;
+    overflow-y: auto;
+  }
+  .cand-main {
+    padding: 24px;
+    overflow-y: auto;
+  }
+  .cand-name {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.4px;
+    margin-bottom: 4px;
+  }
+  .cand-role-badge {
+    font-size: 12px;
+    color: #888;
+    margin-bottom: 16px;
+  }
+  .sidebar-section {
+    margin-bottom: 24px;
+  }
+  .sidebar-section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: #555;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+  }
+  .info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 5px 0;
+    font-size: 13px;
+    border-bottom: 1px solid #222;
+  }
+  .info-row:last-child { border-bottom: none; }
+  .info-label { color: #666; }
+  .info-value { color: #ccc; font-weight: 500; }
+  .grade-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 5px;
+    font-size: 11px;
+    font-weight: 600;
+    background: rgba(139,92,246,.15);
+    color: #a78bfa;
+  }
+
+  /* PIPELINE SECTION in candidate card */
+  .pipeline-section {
+    background: #18181b;
+    border: 1px solid #2a2a2f;
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 20px;
+  }
+  .pipeline-section-header {
+    padding: 14px 16px 12px;
+    border-bottom: 1px solid #2a2a2f;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .pipeline-section-title {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+  }
+  .add-pipeline-btn {
+    font-size: 12px;
+    color: #666;
+    cursor: pointer;
+    padding: 4px 10px;
+    border: 1px solid #333;
+    border-radius: 6px;
+    background: none;
+    transition: all .15s;
+  }
+  .add-pipeline-btn:hover { border-color: #555; color: #aaa; }
+
+  .vacancy-pipeline-item {
+    padding: 14px 16px;
+    border-bottom: 1px solid #222;
+    transition: background .12s;
+  }
+  .vacancy-pipeline-item:last-child { border-bottom: none; }
+  .vacancy-pipeline-item:hover { background: #1c1c20; }
+
+  .vac-pipeline-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .vac-title {
+    font-size: 13.5px;
+    font-weight: 500;
+    color: #e0e0e6;
+  }
+  .vac-client {
+    font-size: 11.5px;
+    color: #555;
+    margin-top: 1px;
+  }
+  .stage-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
+    margin-left: 12px;
+  }
+  .stage-chip .dot { width: 6px; height: 6px; border-radius: 50%; }
+
+  /* HISTORY TIMELINE */
+  .history-timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-top: 8px;
+  }
+  .history-item {
+    display: flex;
+    gap: 10px;
+    position: relative;
+    padding-bottom: 10px;
+  }
+  .history-item:last-child { padding-bottom: 0; }
+  .history-item::before {
+    content: '';
+    position: absolute;
+    left: 5px;
+    top: 14px;
+    bottom: 0;
+    width: 1px;
+    background: #2a2a2f;
+  }
+  .history-item:last-child::before { display: none; }
+  .h-dot {
+    width: 11px;
+    height: 11px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    margin-top: 3px;
+    border: 2px solid #0f0f11;
+  }
+  .h-content { flex: 1; min-width: 0; }
+  .h-stage { font-size: 12.5px; font-weight: 500; color: #ccc; }
+  .h-meta { font-size: 11px; color: #555; margin-top: 1px; }
+
+  .move-btn {
+    font-size: 12px;
+    color: #666;
+    cursor: pointer;
+    padding: 4px 10px;
+    border: 1px solid #2a2a2f;
+    border-radius: 6px;
+    background: none;
+    transition: all .15s;
+    margin-top: 8px;
+  }
+  .move-btn:hover { border-color: #444; color: #aaa; }
+
+  /* COLORS */
+  .c-gray { background: #3f3f46; }
+  .c-blue { background: #1d4ed8; }
+  .c-purple { background: #7c3aed; }
+  .c-orange { background: #ea580c; }
+  .c-amber { background: #d97706; }
+  .c-teal { background: #0d9488; }
+  .c-cyan { background: #0891b2; }
+  .c-indigo { background: #4338ca; }
+  .c-rose { background: #e11d48; }
+  .c-emerald { background: #059669; }
+  .c-sky { background: #0284c7; }
+
+  .chip-clarify { background: rgba(234,88,12,.12); color: #fb923c; }
+  .chip-clarify .dot { background: #ea580c; }
+  .chip-process { background: rgba(139,92,246,.12); color: #a78bfa; }
+  .chip-process .dot { background: #7c3aed; }
+  .chip-hired { background: rgba(5,150,105,.15); color: #34d399; }
+  .chip-hired .dot { background: #059669; }
+
+  /* PAGE SWITCHER */
+  .page-switcher {
+    display: flex;
+    gap: 0;
+    background: #1e1e22;
+    border: 1px solid #2a2a2f;
+    border-radius: 10px;
+    padding: 3px;
+    width: fit-content;
+    margin: 20px auto 0;
+  }
+  .ps-btn {
+    padding: 8px 20px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+    background: none;
+    color: #666;
+    transition: all .15s;
+  }
+  .ps-btn.active { background: #2e2e36; color: #e0e0e6; }
+  .ps-btn:hover:not(.active) { color: #aaa; }
+
+  .page-label {
+    text-align: center;
+    font-size: 12px;
+    color: #444;
+    margin-bottom: 6px;
+    letter-spacing: 0.3px;
+  }
+
+  .empty-col {
+    padding: 10px 8px;
+    font-size: 11px;
+    color: #333;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <span class="nav-logo">АУФ Match</span>
+  <button class="nav-tab">Кандидаты</button>
+  <button class="nav-tab active">Вакансии</button>
+  <button class="nav-tab">Матчинг</button>
+</nav>
+
+<div class="page-label" style="margin-top:16px;">Переключайтесь между экранами:</div>
+<div class="page-switcher">
+  <button class="ps-btn active" onclick="showPage('board')">Доска вакансии</button>
+  <button class="ps-btn" onclick="showPage('candidate')">Карточка кандидата</button>
+</div>
+
+<!-- ======================== PAGE 1: BOARD ======================== -->
+<div id="page-board" class="page active">
+  <div class="section-header">
+    <div class="section-title">
+      Product Designer · Тинькофф
+      <span class="badge">Senior</span>
+    </div>
+    <div class="view-tabs">
+      <div class="view-tab">Обзор</div>
+      <div class="view-tab active">Кандидаты</div>
+      <div class="view-tab">Шорт-лист</div>
+    </div>
+  </div>
+
+  <div class="board-wrapper">
+    <div class="board">
+
+      <!-- STAGE 1: Одобрен ДЛ -->
+      <div class="col">
+        <div class="col-header">
+          <div class="col-dot c-teal"></div>
+          <div class="col-name">Одобрен ДЛ</div>
+          <div class="col-count">3</div>
+        </div>
+        <div class="col-cards">
+          <div class="cand-card" onclick="openMenu(event, 'Дмитрий Волков')">
+            <div class="name">Дмитрий Волков</div>
+            <div class="role">Senior Product Designer</div>
+            <div class="meta">
+              <div class="score">94%</div>
+              <div class="days">2 дня</div>
+            </div>
+          </div>
+          <div class="cand-card" onclick="openMenu(event, 'Ольга Новикова')">
+            <div class="name">Ольга Новикова</div>
+            <div class="role">Product Designer</div>
+            <div class="meta">
+              <div class="score mid">78%</div>
+              <div class="days">4 дня</div>
+            </div>
+          </div>
+          <div class="cand-card" onclick="openMenu(event, 'Артём Фёдоров')">
+            <div class="name">Артём Фёдоров</div>
+            <div class="role">UX/UI Designer</div>
+            <div class="meta">
+              <div class="score mid">75%</div>
+              <div class="days">4 дня</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STAGE 2: В подборке для клиента -->
+      <div class="col">
+        <div class="col-header">
+          <div class="col-dot c-indigo"></div>
+          <div class="col-name">В подборке для клиента</div>
+          <div class="col-count">2</div>
+        </div>
+        <div class="col-cards">
+          <div class="cand-card" onclick="openMenu(event, 'Полина Алексеева')">
+            <div class="name">Полина Алексеева</div>
+            <div class="role">Product Designer</div>
+            <div class="meta">
+              <div class="score">88%</div>
+              <div class="days">9 дней</div>
+            </div>
+          </div>
+          <div class="cand-card" onclick="openMenu(event, 'Евгений Соколов')">
+            <div class="name">Евгений Соколов</div>
+            <div class="role">Senior PD</div>
+            <div class="meta">
+              <div class="score mid">82%</div>
+              <div class="days">9 дней</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STAGE 3: Репетиция -->
+      <div class="col">
+        <div class="col-header">
+          <div class="col-dot c-blue"></div>
+          <div class="col-name">Репетиция</div>
+          <div class="col-count">1</div>
+        </div>
+        <div class="col-cards">
+          <div class="cand-card" onclick="openMenu(event, 'Надежда Иванова')">
+            <div class="name">Надежда Иванова</div>
+            <div class="role">Product Designer</div>
+            <div class="meta">
+              <div class="score">89%</div>
+              <div class="days">7 дней</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STAGE 4: Интервью с клиентом -->
+      <div class="col">
+        <div class="col-header">
+          <div class="col-dot c-cyan"></div>
+          <div class="col-name">Интервью с клиентом</div>
+          <div class="col-count">1</div>
+        </div>
+        <div class="col-cards">
+          <div class="cand-card" onclick="openMenu(event, 'Кирилл Лебедев')">
+            <div class="name">Кирилл Лебедев</div>
+            <div class="role">Product Designer</div>
+            <div class="meta">
+              <div class="score">95%</div>
+              <div class="days">12 дней</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STAGE 5: Тестовое -->
+      <div class="col">
+        <div class="col-header">
+          <div class="col-dot c-sky"></div>
+          <div class="col-name">Тестовое задание</div>
+          <div class="col-count">1</div>
+        </div>
+        <div class="col-cards">
+          <div class="cand-card" onclick="openMenu(event, 'Виктория Романова')">
+            <div class="name">Виктория Романова</div>
+            <div class="role">Senior Designer</div>
+            <div class="meta">
+              <div class="score">93%</div>
+              <div class="days">14 дней</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STAGE 6: Оффер -->
+      <div class="col">
+        <div class="col-header">
+          <div class="col-dot c-rose"></div>
+          <div class="col-name">Оффер</div>
+          <div class="col-count">0</div>
+        </div>
+        <div class="col-cards">
+          <div class="empty-col">—</div>
+        </div>
+      </div>
+
+      <!-- STAGE 7: Отказ -->
+      <div class="col">
+        <div class="col-header">
+          <div class="col-dot" style="background:#3f3f46"></div>
+          <div class="col-name">Отказ</div>
+          <div class="col-count">2</div>
+        </div>
+        <div class="col-cards">
+          <div class="cand-card" style="opacity:.5" onclick="openMenu(event, 'Максим Попов')">
+            <div class="name">Максим Попов</div>
+            <div class="role">UI Designer</div>
+            <div class="meta">
+              <div class="score low">54%</div>
+              <div class="days">8 дней</div>
+            </div>
+          </div>
+          <div class="cand-card" style="opacity:.5" onclick="openMenu(event, 'Татьяна Кузьмина')">
+            <div class="name">Татьяна Кузьмина</div>
+            <div class="role">Product Designer</div>
+            <div class="meta">
+              <div class="score mid">68%</div>
+              <div class="days">11 дней</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- STAGE 8: Нанят -->
+      <div class="col">
+        <div class="col-header">
+          <div class="col-dot c-emerald"></div>
+          <div class="col-name">Нанят</div>
+          <div class="col-count">0</div>
+        </div>
+        <div class="col-cards">
+          <div class="empty-col">—</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ======================== PAGE 2: CANDIDATE CARD ======================== -->
+<div id="page-candidate" class="page">
+  <div class="candidate-layout">
+    <!-- SIDEBAR -->
+    <div class="cand-sidebar">
+      <div class="cand-name">Дмитрий Волков</div>
+      <div class="cand-role-badge">Senior Product Designer</div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Триаж в базе</div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span class="stage-chip" style="background:rgba(13,148,136,.15); color:#5eead4; margin-left:0;">
+            <span class="dot" style="background:#0d9488"></span>
+            База
+          </span>
+          <span style="font-size:11px; color:#555;">▾ сменить</span>
+        </div>
+        <div style="font-size:11px; color:#555; margin-top:6px;">Новый · Нужны уточнения · На уточнении · База</div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Основное</div>
+        <div class="info-row">
+          <span class="info-label">Грейд</span>
+          <span class="info-value"><span class="grade-badge">Senior</span></span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Опыт</span>
+          <span class="info-value">7 лет</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Локация</span>
+          <span class="info-value">Москва</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Специализация</span>
+          <span class="info-value">Product, UX</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Домены</span>
+          <span class="info-value">Fintech, SaaS</span>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Портфолио</div>
+        <div style="font-size:13px; color:#4a9eff; cursor:pointer; padding:4px 0;">figma.com/dmitryvolkov</div>
+        <div style="font-size:13px; color:#4a9eff; cursor:pointer; padding:4px 0;">behance.net/dvolkov</div>
+      </div>
+
+      <div class="sidebar-section">
+        <div class="sidebar-section-title">Контакты</div>
+        <div class="info-row">
+          <span class="info-label">Telegram</span>
+          <span class="info-value">@dvolkov</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Email</span>
+          <span class="info-value">d@volkov.ru</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN -->
+    <div class="cand-main">
+
+      <!-- PIPELINE SECTION -->
+      <div class="pipeline-section">
+        <div class="pipeline-section-header">
+          <div class="pipeline-section-title">Вакансии в работе</div>
+          <button class="add-pipeline-btn">+ Добавить в вакансию</button>
+        </div>
+
+        <!-- VACANCY 1 -->
+        <div class="vacancy-pipeline-item">
+          <div class="vac-pipeline-top">
+            <div>
+              <div class="vac-title">Product Designer · Тинькофф</div>
+              <div class="vac-client">Тинькофф Банк · Senior</div>
+            </div>
+            <span class="stage-chip chip-process">
+              <span class="dot"></span>
+              В подборке для клиента
+            </span>
+          </div>
+
+          <div class="history-timeline">
+            <div class="history-item">
+              <div class="h-dot" style="background:#4338ca"></div>
+              <div class="h-content">
+                <div class="h-stage">В подборке для клиента</div>
+                <div class="h-meta">Наташа · 2 дня назад</div>
+              </div>
+            </div>
+            <div class="history-item">
+              <div class="h-dot" style="background:#0d9488"></div>
+              <div class="h-content">
+                <div class="h-stage">Одобрен ДЛ</div>
+                <div class="h-meta">Слава · 4 дня назад</div>
+              </div>
+            </div>
+          </div>
+
+          <button class="move-btn" onclick="openMenu(event, 'Дмитрий — Тинькофф')">Переместить этап ↓</button>
+        </div>
+
+        <!-- VACANCY 2 -->
+        <div class="vacancy-pipeline-item">
+          <div class="vac-pipeline-top">
+            <div>
+              <div class="vac-title">Lead Designer · Яндекс</div>
+              <div class="vac-client">Яндекс · Lead</div>
+            </div>
+            <span class="stage-chip" style="background:rgba(13,148,136,.15); color:#5eead4;">
+              <span class="dot" style="background:#0d9488"></span>
+              Одобрен ДЛ
+            </span>
+          </div>
+
+          <div class="history-timeline">
+            <div class="history-item">
+              <div class="h-dot" style="background:#0d9488"></div>
+              <div class="h-content">
+                <div class="h-stage">Одобрен ДЛ</div>
+                <div class="h-meta">Слава · 1 день назад</div>
+              </div>
+            </div>
+          </div>
+
+          <button class="move-btn" onclick="openMenu(event, 'Дмитрий — Яндекс')">Переместить этап ↓</button>
+        </div>
+
+        <!-- VACANCY 3 (hired) -->
+        <div class="vacancy-pipeline-item" style="opacity:.6">
+          <div class="vac-pipeline-top">
+            <div>
+              <div class="vac-title">Product Designer · Ozon</div>
+              <div class="vac-client">Ozon · Middle+</div>
+            </div>
+            <span class="stage-chip chip-hired">
+              <span class="dot"></span>
+              Нанят
+            </span>
+          </div>
+
+          <div class="history-timeline">
+            <div class="history-item">
+              <div class="h-dot" style="background:#059669"></div>
+              <div class="h-content">
+                <div class="h-stage">Нанят</div>
+                <div class="h-meta">Наташа · 2 мес. назад</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- SCORES -->
+      <div style="background:#18181b; border:1px solid #2a2a2f; border-radius:12px; padding:16px; margin-bottom:20px;">
+        <div style="font-size:14px; font-weight:600; margin-bottom:14px;">AI-оценки портфолио</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div style="background:#1e1e22; padding:12px; border-radius:8px;">
+            <div style="font-size:11px; color:#666; margin-bottom:4px;">Продуктовое мышление</div>
+            <div style="font-size:20px; font-weight:700; color:#a78bfa;">88</div>
+          </div>
+          <div style="background:#1e1e22; padding:12px; border-radius:8px;">
+            <div style="font-size:11px; color:#666; margin-bottom:4px;">Визуальная сила</div>
+            <div style="font-size:20px; font-weight:700; color:#60a5fa;">91</div>
+          </div>
+          <div style="background:#1e1e22; padding:12px; border-radius:8px;">
+            <div style="font-size:11px; color:#666; margin-bottom:4px;">UX глубина</div>
+            <div style="font-size:20px; font-weight:700; color:#34d399;">85</div>
+          </div>
+          <div style="background:#1e1e22; padding:12px; border-radius:8px;">
+            <div style="font-size:11px; color:#666; margin-bottom:4px;">Метрики и влияние</div>
+            <div style="font-size:20px; font-weight:700; color:#f59e0b;">76</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- MENU OVERLAY -->
+<div class="menu-overlay" id="menuOverlay">
+  <div class="menu-backdrop" onclick="closeMenu()"></div>
+  <div class="menu-popup" id="menuPopup">
+    <div class="menu-header" id="menuTitle">Переместить</div>
+    <div id="menuItems"></div>
+  </div>
+</div>
+
+<script>
+const stages = [
+  { id: 1, name: 'Одобрен ДЛ',          color: '#0d9488' },
+  { id: 2, name: 'В подборке для клиента', color: '#4338ca' },
+  { id: 3, name: 'Репетиция',           color: '#1d4ed8' },
+  { id: 4, name: 'Интервью с клиентом', color: '#0891b2' },
+  { id: 5, name: 'Тестовое задание',    color: '#0284c7' },
+  { id: 6, name: 'Оффер',               color: '#e11d48' },
+  { id: 7, name: 'Отказ',               color: '#3f3f46' },
+  { id: 8, name: 'Нанят',               color: '#059669' },
+];
+
+function openMenu(e, candName) {
+  e.stopPropagation();
+  const overlay = document.getElementById('menuOverlay');
+  const popup = document.getElementById('menuPopup');
+  const title = document.getElementById('menuTitle');
+  const items = document.getElementById('menuItems');
+
+  title.textContent = candName;
+  items.innerHTML = '';
+
+  // divider
+  const div1 = document.createElement('div');
+  div1.className = 'menu-header';
+  div1.textContent = 'Переместить на этап';
+  items.appendChild(div1);
+
+  stages.forEach(s => {
+    const item = document.createElement('div');
+    item.className = 'menu-item';
+    item.innerHTML = `<div class="dot" style="background:${s.color}"></div>${s.name}`;
+    item.onclick = () => { closeMenu(); };
+    items.appendChild(item);
+  });
+
+  const divider = document.createElement('div');
+  divider.className = 'menu-divider';
+  items.appendChild(divider);
+
+  const openCard = document.createElement('div');
+  openCard.className = 'menu-item';
+  openCard.innerHTML = '↗ Открыть карточку';
+  openCard.onclick = () => { closeMenu(); showPage('candidate'); };
+  items.appendChild(openCard);
+
+  // position
+  const rect = e.target.closest('.cand-card, button')?.getBoundingClientRect() || { left: e.clientX, top: e.clientY, width: 0, height: 0 };
+  let left = rect.left;
+  let top = rect.bottom + 8;
+  if (left + 240 > window.innerWidth - 16) left = window.innerWidth - 256;
+  if (top + 400 > window.innerHeight - 16) top = rect.top - 420;
+
+  popup.style.left = left + 'px';
+  popup.style.top = top + 'px';
+  overlay.classList.add('open');
+}
+
+function closeMenu() {
+  document.getElementById('menuOverlay').classList.remove('open');
+}
+
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.ps-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>
+</body>
+</html>

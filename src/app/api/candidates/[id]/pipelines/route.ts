@@ -15,7 +15,29 @@ export async function GET(
       },
       orderBy: { updatedAt: "desc" },
     });
-    return NextResponse.json(pipelines);
+
+    // Оценка соответствия по каждой вакансии: DetailedScore -> MatchResult -> null
+    const vacancyIds = pipelines.map((p) => p.vacancyId);
+    const [detailed, matches] = await Promise.all([
+      prisma.detailedScore.findMany({
+        where: { candidateId, vacancyId: { in: vacancyIds } },
+        select: { vacancyId: true, overallScore: true },
+      }),
+      prisma.matchResult.findMany({
+        where: { candidateId, vacancyId: { in: vacancyIds } },
+        select: { vacancyId: true, overallScore: true },
+      }),
+    ]);
+    const scoreByVacancy = new Map<string, number>();
+    for (const m of matches) scoreByVacancy.set(m.vacancyId, m.overallScore);
+    for (const d of detailed) scoreByVacancy.set(d.vacancyId, d.overallScore);
+
+    const result = pipelines.map((p) => ({
+      ...p,
+      score: scoreByVacancy.get(p.vacancyId) ?? null,
+    }));
+
+    return NextResponse.json(result);
   } catch (error) {
     console.error("GET candidate pipelines error:", error);
     return NextResponse.json({ error: "Внутренняя ошибка сервера" }, { status: 500 });

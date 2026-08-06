@@ -1,6 +1,8 @@
 "use client";
 
 import React, { useState, useEffect, use, useCallback } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { dropdownMotion } from "@/lib/motion-dropdown";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1498,13 +1500,17 @@ function InlineNamePicker({
       >
         {name}
       </button>
+      <AnimatePresence>
       {open && (
         <>
           <span
             className="fixed inset-0 z-10"
             onClick={() => setOpen(false)}
           />
-          <span className="absolute left-0 top-full z-20 mt-1 min-w-[80px] overflow-hidden rounded-lg border border-border bg-white dark:bg-zinc-900 shadow-lg">
+          <motion.span
+            {...dropdownMotion}
+            className="absolute left-0 top-full z-20 mt-1 min-w-[80px] origin-top overflow-hidden rounded-lg border border-border bg-popover/95 shadow-lg backdrop-blur-sm"
+          >
             {RECRUITER_NAMES.map((n) => (
               <button
                 key={n}
@@ -1516,9 +1522,10 @@ function InlineNamePicker({
                 {n}
               </button>
             ))}
-          </span>
+          </motion.span>
         </>
       )}
+      </AnimatePresence>
     </span>
   );
 }

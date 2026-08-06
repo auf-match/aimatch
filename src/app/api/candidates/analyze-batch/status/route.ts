@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
-import { IMPORT_SOURCES } from "@/lib/import-types";
 
 export async function GET() {
   try {
     // Фильтры должны совпадать с выборкой в analyze-batch.
-    const sources = { in: [...IMPORT_SOURCES] };
+    const sources = { not: null };
     const [pending, failed] = await Promise.all([
       prisma.candidate.count({
         where: { status: "NEW", source: sources, portfolioLinks: { isEmpty: false } },

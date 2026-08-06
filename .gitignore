@@ -2,6 +2,7 @@ node_modules/
 .next/
 .env
 uploads/
+.DS_Store
 dist/
 *.tsbuildinfo
 
@@ -9,3 +10,6 @@ dist/
 
 # Локальные данные для импортов (PII кандидатов — никогда в репо).
 scripts/data/
+
+# Локальные настройки Claude Code — туда попадают команды с ключами.
+.claude/settings.local.json

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { motion } from "motion/react";
+import { dropdownMotion } from "@/lib/motion-dropdown";
 import { useRouter } from "next/navigation";
 import {
   PIPELINE_STAGE_ORDER,
@@ -28,6 +30,13 @@ interface PipelineRow {
   stage: PipelineStage;
   score: number | null;
   lastTransitionAt: string;
+}
+
+interface CandidateSearchResult {
+  id: string;
+  name: string;
+  role: string;
+  grade: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -74,9 +83,10 @@ function MoveMenu({ row, anchorRect, onMove, onOpenCard, onClose }: MoveMenuProp
         }
       }}
     >
-      <div
+      <motion.div
         ref={popupRef}
-        className="absolute rounded-xl border border-border bg-white dark:bg-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,.4)] p-1.5"
+        {...dropdownMotion}
+        className="absolute origin-top rounded-xl border border-border bg-popover/95 shadow-[0_20px_60px_rgba(0,0,0,.4)] backdrop-blur-sm p-1.5"
         style={{ left, top, width: popupWidth }}
       >
         {/* Candidate name header */}
@@ -114,7 +124,7 @@ function MoveMenu({ row, anchorRect, onMove, onOpenCard, onClose }: MoveMenuProp
           <span className="text-muted-foreground">↗</span>
           Открыть карточку
         </button>
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -124,9 +134,12 @@ function MoveMenu({ row, anchorRect, onMove, onOpenCard, onClose }: MoveMenuProp
 interface CandidateCardProps {
   row: PipelineRow;
   onMenu: (row: PipelineRow, rect: DOMRect) => void;
+  scoring: boolean;
+  scoreFailed: boolean;
+  onRetryScore: (candidateId: string) => void;
 }
 
-function CandidateCard({ row, onMenu }: CandidateCardProps) {
+function CandidateCard({ row, onMenu, scoring, scoreFailed, onRetryScore }: CandidateCardProps) {
   const days = daysInStage(new Date(row.lastTransitionAt), new Date());
   const isRejected = row.stage === "REJECTED";
 
@@ -149,13 +162,27 @@ function CandidateCard({ row, onMenu }: CandidateCardProps) {
         )}
       </div>
       <div className="flex items-center gap-1.5">
-        {row.score !== null && (
+        {row.score !== null ? (
           <span
             className={`text-[11px] font-semibold rounded px-1.5 py-0.5 ${scoreBadgeClasses(row.score)}`}
           >
             {row.score}%
           </span>
-        )}
+        ) : scoring ? (
+          <span className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-muted text-muted-foreground animate-pulse">
+            анализ…
+          </span>
+        ) : scoreFailed ? (
+          <button
+            className="text-[11px] font-medium rounded px-1.5 py-0.5 bg-red-400/10 text-red-400 hover:bg-red-400/20 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRetryScore(row.candidateId);
+            }}
+          >
+            ⚠ оценить снова
+          </button>
+        ) : null}
         <span className="text-[11px] text-muted-foreground ml-auto">{formatDays(days)}</span>
       </div>
     </div>
@@ -168,9 +195,12 @@ interface ColumnProps {
   stage: PipelineStage;
   rows: PipelineRow[];
   onCardMenu: (row: PipelineRow, rect: DOMRect) => void;
+  scoringIds: Set<string>;
+  failedIds: Set<string>;
+  onRetryScore: (candidateId: string) => void;
 }
 
-function BoardColumn({ stage, rows, onCardMenu }: ColumnProps) {
+function BoardColumn({ stage, rows, onCardMenu, scoringIds, failedIds, onRetryScore }: ColumnProps) {
   const color = PIPELINE_STAGE_COLORS[stage];
   const label = PIPELINE_STAGE_LABELS[stage];
 
@@ -196,10 +226,127 @@ function BoardColumn({ stage, rows, onCardMenu }: ColumnProps) {
           <div className="text-center text-[11px] text-muted-foreground/30 py-2">—</div>
         ) : (
           rows.map((row) => (
-            <CandidateCard key={row.candidateId} row={row} onMenu={onCardMenu} />
+            <CandidateCard
+              key={row.candidateId}
+              row={row}
+              onMenu={onCardMenu}
+              scoring={scoringIds.has(row.candidateId)}
+              scoreFailed={failedIds.has(row.candidateId)}
+              onRetryScore={onRetryScore}
+            />
           ))
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Candidate picker (ручное добавление) ─────────────────────────────
+
+interface CandidatePickerProps {
+  anchorRect: DOMRect;
+  existingIds: Set<string>;
+  onPick: (candidateId: string) => void;
+  onClose: () => void;
+}
+
+function CandidatePicker({ anchorRect, existingIds, onPick, onClose }: CandidatePickerProps) {
+  const popupRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<CandidateSearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const popupWidth = 320;
+  let left = anchorRect.left;
+  let top = anchorRect.bottom + 8;
+  if (typeof window !== "undefined") {
+    if (left + popupWidth > window.innerWidth - 16) left = window.innerWidth - popupWidth - 16;
+    if (top + 420 > window.innerHeight - 16) top = Math.max(16, anchorRect.top - 420 - 8);
+  }
+
+  // Автофокус на поле поиска
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  // Дебаунс-поиск по имени; пустой запрос — последние кандидаты
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    const t = setTimeout(() => {
+      const q = query.trim();
+      const url = q
+        ? `/api/candidates?limit=20&search=${encodeURIComponent(q)}`
+        : `/api/candidates?limit=20`;
+      fetch(url)
+        .then((r) => r.json())
+        .then((data) => {
+          if (!active) return;
+          const list: CandidateSearchResult[] = (data.data ?? []).map(
+            (c: { id: string; name: string; role: string; grade: string }) => ({
+              id: c.id,
+              name: c.name,
+              role: c.role,
+              grade: c.grade,
+            }),
+          );
+          setResults(list);
+        })
+        .catch((err) => { console.error("candidate search failed:", err); })
+        .finally(() => { if (active) setLoading(false); });
+    }, 250);
+    return () => { active = false; clearTimeout(t); };
+  }, [query]);
+
+  return (
+    <div
+      className="fixed inset-0 z-50"
+      onMouseDown={(e) => {
+        if (popupRef.current && !popupRef.current.contains(e.target as Node)) onClose();
+      }}
+    >
+      <motion.div
+        ref={popupRef}
+        {...dropdownMotion}
+        className="absolute flex flex-col origin-top rounded-xl border border-border bg-popover/95 shadow-[0_20px_60px_rgba(0,0,0,.4)] backdrop-blur-sm p-1.5"
+        style={{ left, top, width: popupWidth, maxHeight: 420 }}
+      >
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape") onClose(); }}
+          placeholder="Поиск по имени…"
+          className="mb-1 w-full rounded-lg border border-border bg-transparent px-2.5 py-2 text-[13px] text-foreground outline-none placeholder:text-muted-foreground focus:border-border/80"
+        />
+        <div className="overflow-y-auto">
+          {loading && results.length === 0 ? (
+            <div className="px-2.5 py-3 text-[13px] text-muted-foreground">Загрузка…</div>
+          ) : results.length === 0 ? (
+            <div className="px-2.5 py-3 text-[13px] text-muted-foreground">Никого не найдено</div>
+          ) : (
+            results.map((c) => {
+              const already = existingIds.has(c.id);
+              return (
+                <button
+                  key={c.id}
+                  disabled={already}
+                  className={`flex w-full flex-col rounded-lg px-2.5 py-2 text-left transition-colors ${already ? "opacity-40 cursor-not-allowed" : "hover:bg-muted/60"}`}
+                  onClick={() => { if (!already) { onPick(c.id); onClose(); } }}
+                >
+                  <span className="text-[13px] text-foreground truncate">{c.name}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {ROLE_LABELS[c.role] ?? c.role}
+                    {c.grade && ` · ${GRADE_LABELS[c.grade] ?? c.grade}`}
+                    {already && " · уже в воронке"}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </motion.div>
     </div>
   );
 }
@@ -214,6 +361,9 @@ export default function PipelineBoard({ vacancyId }: { vacancyId: string }) {
     row: PipelineRow;
     rect: DOMRect;
   } | null>(null);
+  const [pickerRect, setPickerRect] = useState<DOMRect | null>(null);
+  const [scoringIds, setScoringIds] = useState<Set<string>>(new Set());
+  const [failedIds, setFailedIds] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let active = true;
@@ -263,8 +413,63 @@ export default function PipelineBoard({ vacancyId }: { vacancyId: string }) {
     }
   };
 
+  const refetchBoard = async () => {
+    const fresh = await fetch(`/api/vacancies/${vacancyId}/pipeline`);
+    const data: PipelineRow[] = await fresh.json();
+    setRows(data);
+  };
+
+  // AI-скоринг: насколько кандидат подходит под вакансию (создаёт DetailedScore)
+  const scoreCandidate = async (candidateId: string) => {
+    setFailedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(candidateId);
+      return next;
+    });
+    setScoringIds((prev) => new Set(prev).add(candidateId));
+    try {
+      const res = await fetch(
+        `/api/vacancies/${vacancyId}/score/${candidateId}`,
+        { method: "POST" },
+      );
+      if (!res.ok) throw new Error(`score ${res.status}`);
+      await refetchBoard();
+    } catch (err) {
+      console.error("Scoring error:", err);
+      setFailedIds((prev) => new Set(prev).add(candidateId));
+    } finally {
+      setScoringIds((prev) => {
+        const next = new Set(prev);
+        next.delete(candidateId);
+        return next;
+      });
+    }
+  };
+
+  // Ручное добавление кандидата в воронку (в обход AI-скрининга) + авто-скоринг
+  const handleAdd = async (candidateId: string) => {
+    const actor = getPipelineActor();
+    try {
+      const res = await fetch(`/api/vacancies/${vacancyId}/pipeline`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidateId, actor }),
+      });
+      if (res.ok) {
+        await refetchBoard();
+        // Оценить соответствие вакансии (не блокирует появление карточки)
+        void scoreCandidate(candidateId);
+      } else {
+        console.error("Manual add failed:", res.status);
+      }
+    } catch (err) {
+      console.error("Manual add error:", err);
+    }
+  };
+
   const grouped = groupPipelineByStage(rows);
   const isEmpty = rows.length === 0;
+  const existingIds = new Set(rows.map((r) => r.candidateId));
 
   if (loading) {
     return (
@@ -274,6 +479,19 @@ export default function PipelineBoard({ vacancyId }: { vacancyId: string }) {
 
   return (
     <div className="relative">
+      {/* Header: ручное добавление */}
+      <div className="flex items-center justify-end mb-2.5">
+        <button
+          className="text-[12px] text-muted-foreground hover:text-foreground border border-border rounded-md px-2.5 py-1 transition-colors hover:border-border/70"
+          onClick={(e) => {
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            setPickerRect(rect);
+          }}
+        >
+          + Добавить кандидата вручную
+        </button>
+      </div>
+
       {isEmpty && (
         <p className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground pointer-events-none z-10">
           Пока никого в воронке
@@ -295,6 +513,9 @@ export default function PipelineBoard({ vacancyId }: { vacancyId: string }) {
               stage={stage}
               rows={grouped[stage]}
               onCardMenu={(row, rect) => setMenuState({ row, rect })}
+              scoringIds={scoringIds}
+              failedIds={failedIds}
+              onRetryScore={scoreCandidate}
             />
           ))}
         </div>
@@ -310,6 +531,16 @@ export default function PipelineBoard({ vacancyId }: { vacancyId: string }) {
             router.push(`/candidates/${menuState.row.candidateId}`);
           }}
           onClose={() => setMenuState(null)}
+        />
+      )}
+
+      {/* Candidate picker (ручное добавление) */}
+      {pickerRect && (
+        <CandidatePicker
+          anchorRect={pickerRect}
+          existingIds={existingIds}
+          onPick={handleAdd}
+          onClose={() => setPickerRect(null)}
         />
       )}
     </div>

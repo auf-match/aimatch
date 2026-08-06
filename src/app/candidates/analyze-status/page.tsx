@@ -37,7 +37,28 @@ function hostnameOf(link: string): string {
 export default function AnalyzeStatusPage() {
   const [data, setData] = useState<StatusDebugResponse | null>(null);
   const [fetchError, setFetchError] = useState(false);
+  const [retrying, setRetrying] = useState(false);
+  const [retryMsg, setRetryMsg] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const handleRetryFailed = async () => {
+    setRetrying(true);
+    setRetryMsg(null);
+    try {
+      const res = await fetch("/api/candidates/analyze-batch/retry-failed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ limit: 50 }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `Ошибка ${res.status}`);
+      setRetryMsg(`Запущен повтор: ${json.started} кандидат(ов). Прогресс обновится ниже.`);
+    } catch (err) {
+      setRetryMsg(err instanceof Error ? err.message : "Не удалось запустить повтор");
+    } finally {
+      setRetrying(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -72,10 +93,24 @@ export default function AnalyzeStatusPage() {
   return (
     <div className="min-h-screen">
       <div className="bg-card px-6 py-5 shadow-[0_1px_0_0_oklch(0_0_0/0.05)]">
-        <h1 className="text-2xl font-bold tracking-tight">Мониторинг анализа</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">
-          Осталось в очереди: {pending} · В обработке: {processing.length} · С ошибкой: {failed.length}
-        </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Мониторинг анализа</h1>
+            <p className="text-sm text-muted-foreground mt-0.5">
+              Осталось в очереди: {pending} · В обработке: {processing.length} · С ошибкой: {failed.length}
+            </p>
+          </div>
+          {failed.length > 0 && (
+            <button
+              onClick={handleRetryFailed}
+              disabled={retrying}
+              className="shrink-0 rounded-lg bg-[#F97029] px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-[#F97029]/90 disabled:opacity-50"
+            >
+              {retrying ? "Запуск…" : `Повторить упавшие (до 50)`}
+            </button>
+          )}
+        </div>
+        {retryMsg && <p className="text-xs text-muted-foreground mt-2">{retryMsg}</p>}
         {fetchError && (
           <p className="text-xs text-red-500 mt-1">Не удалось обновить данные</p>
         )}

@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { getProcessing } from "@/server/services/analysis-tracker";
-import { IMPORT_SOURCES } from "@/lib/import-types";
 
 export async function GET() {
   try {
-    const sources = { in: [...IMPORT_SOURCES] };
+    const sources = { not: null };
     const [failed, pending] = await Promise.all([
       prisma.candidate.findMany({
         where: { status: "ANALYSIS_FAILED", source: sources },

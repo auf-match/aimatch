@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { motion } from "motion/react";
+import { dropdownMotion } from "@/lib/motion-dropdown";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   PIPELINE_STAGE_ORDER,
@@ -34,6 +36,7 @@ interface VacancyPipelineEntry {
   vacancyId: string;
   createdAt: string;
   updatedAt: string;
+  score: number | null;
   vacancy: {
     id: string;
     title: string;
@@ -41,6 +44,12 @@ interface VacancyPipelineEntry {
     grade: string;
   };
   transitions: StageTransition[];
+}
+
+function scoreBadgeClasses(score: number): string {
+  if (score >= 75) return "text-emerald-400 bg-emerald-400/10";
+  if (score >= 50) return "text-amber-400 bg-amber-400/10";
+  return "text-red-400 bg-red-400/10";
 }
 
 interface VacancyOption {
@@ -89,9 +98,10 @@ function MoveMenu({ anchorRect, currentStage, onMove, onClose }: MoveMenuProps) 
         }
       }}
     >
-      <div
+      <motion.div
         ref={popupRef}
-        className="absolute rounded-xl border border-border bg-white dark:bg-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,.4)] p-1.5"
+        {...dropdownMotion}
+        className="absolute origin-top rounded-xl border border-border bg-popover/95 shadow-[0_20px_60px_rgba(0,0,0,.4)] backdrop-blur-sm p-1.5"
         style={{ left, top, width: popupWidth }}
       >
         <div className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -113,7 +123,7 @@ function MoveMenu({ anchorRect, currentStage, onMove, onClose }: MoveMenuProps) 
             {PIPELINE_STAGE_LABELS[stage]}
           </button>
         ))}
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -182,12 +192,13 @@ function VacancyPicker({
         }
       }}
     >
-      <div
+      <motion.div
         ref={popupRef}
-        className="absolute rounded-xl border border-border bg-white dark:bg-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,.4)] p-1.5 max-h-[320px] overflow-y-auto"
+        {...dropdownMotion}
+        className="absolute origin-top rounded-xl border border-border bg-popover/95 shadow-[0_20px_60px_rgba(0,0,0,.4)] backdrop-blur-sm p-1.5 max-h-[320px] overflow-y-auto"
         style={{ left, top, width: popupWidth }}
       >
-        <div className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sticky top-0 bg-white dark:bg-zinc-900">
+        <div className="px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground sticky top-0 bg-popover/95 backdrop-blur-sm">
           Выбрать вакансию
         </div>
         {loading ? (
@@ -225,7 +236,7 @@ function VacancyPicker({
             );
           })
         )}
-      </div>
+      </motion.div>
     </div>
   );
 }
@@ -283,6 +294,8 @@ export default function CandidatePipelines({
     rect: DOMRect;
   } | null>(null);
   const [pickerMenu, setPickerMenu] = useState<{ rect: DOMRect } | null>(null);
+  const [scoringVacancyIds, setScoringVacancyIds] = useState<Set<string>>(new Set());
+  const [failedVacancyIds, setFailedVacancyIds] = useState<Set<string>>(new Set());
 
   // ── Fetch pipelines ──
   const fetchPipelines = async () => {
@@ -337,7 +350,34 @@ export default function CandidatePipelines({
     }
   };
 
-  // ── Approve to vacancy ──
+  // ── AI-скоринг соответствия вакансии (создаёт DetailedScore) ──
+  const scoreVacancy = async (vacancyId: string) => {
+    setFailedVacancyIds((prev) => {
+      const next = new Set(prev);
+      next.delete(vacancyId);
+      return next;
+    });
+    setScoringVacancyIds((prev) => new Set(prev).add(vacancyId));
+    try {
+      const res = await fetch(
+        `/api/vacancies/${vacancyId}/score/${candidateId}`,
+        { method: "POST" },
+      );
+      if (!res.ok) throw new Error(`score ${res.status}`);
+      await fetchPipelines();
+    } catch (err) {
+      console.error("scoring failed:", err);
+      setFailedVacancyIds((prev) => new Set(prev).add(vacancyId));
+    } finally {
+      setScoringVacancyIds((prev) => {
+        const next = new Set(prev);
+        next.delete(vacancyId);
+        return next;
+      });
+    }
+  };
+
+  // ── Approve to vacancy + авто-скоринг ──
   const handleAddToVacancy = async (vacancyId: string) => {
     const actor = getPipelineActor();
     try {
@@ -348,6 +388,8 @@ export default function CandidatePipelines({
       });
       if (res.ok) {
         await fetchPipelines();
+        // Оценить соответствие (не блокирует появление записи)
+        void scoreVacancy(vacancyId);
       }
     } catch (err) {
       console.error("add to vacancy failed:", err);
@@ -434,9 +476,10 @@ export default function CandidatePipelines({
                 }
               }}
             >
-              <div
+              <motion.div
                 ref={triagePopupRef}
-                className="absolute rounded-xl border border-border bg-white dark:bg-zinc-900 shadow-[0_20px_60px_rgba(0,0,0,.4)] p-1.5"
+                {...dropdownMotion}
+                className="absolute origin-top rounded-xl border border-border bg-popover/95 shadow-[0_20px_60px_rgba(0,0,0,.4)] backdrop-blur-sm p-1.5"
                 style={{
                   left: triageAnchorRect.left,
                   top: triageAnchorRect.bottom + 8,
@@ -469,7 +512,7 @@ export default function CandidatePipelines({
                     </button>
                   );
                 })}
-              </div>
+              </motion.div>
             </div>
           )}
         </CardContent>
@@ -523,6 +566,34 @@ export default function CandidatePipelines({
                         {vac.clientName && `${vac.clientName} · `}
                         {GRADE_LABELS[vac.grade] ?? vac.grade}
                       </p>
+                      {/* Fit score */}
+                      <div className="mt-1.5">
+                        {pipeline.score !== null ? (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[11px] font-semibold rounded px-1.5 py-0.5 ${scoreBadgeClasses(pipeline.score)}`}
+                          >
+                            {pipeline.score}% соответствие
+                          </span>
+                        ) : scoringVacancyIds.has(pipeline.vacancyId) ? (
+                          <span className="inline-flex text-[11px] font-medium rounded px-1.5 py-0.5 bg-muted text-muted-foreground animate-pulse">
+                            анализ соответствия…
+                          </span>
+                        ) : failedVacancyIds.has(pipeline.vacancyId) ? (
+                          <button
+                            className="inline-flex text-[11px] font-medium rounded px-1.5 py-0.5 bg-red-400/10 text-red-400 hover:bg-red-400/20 transition-colors"
+                            onClick={() => scoreVacancy(pipeline.vacancyId)}
+                          >
+                            ⚠ оценить снова
+                          </button>
+                        ) : (
+                          <button
+                            className="inline-flex text-[11px] text-muted-foreground hover:text-foreground border border-border/60 hover:border-border rounded px-1.5 py-0.5 transition-colors"
+                            onClick={() => scoreVacancy(pipeline.vacancyId)}
+                          >
+                            Оценить соответствие
+                          </button>
+                        )}
+                      </div>
                     </div>
                     <span
                       className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-semibold shrink-0 ml-3"

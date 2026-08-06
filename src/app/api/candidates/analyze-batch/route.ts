@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { analyzeImportedCandidate } from "@/server/services/candidate-analysis";
-import { IMPORT_SOURCES } from "@/lib/import-types";
 
 export const maxDuration = 300;
 
-const ALLOWED_LIMITS = [10, 20, 50];
+const ALLOWED_LIMITS = [10, 20, 50, 100];
 const CONCURRENCY = 3;
 
 export async function POST(req: NextRequest) {
@@ -18,7 +17,7 @@ export async function POST(req: NextRequest) {
     }
     const { limit } = body;
     if (!limit || !ALLOWED_LIMITS.includes(limit)) {
-      return NextResponse.json({ error: "limit должен быть 10, 20 или 50" }, { status: 400 });
+      return NextResponse.json({ error: "limit должен быть 10, 20, 50 или 100" }, { status: 400 });
     }
 
     // Фильтр по источникам импорта обязателен — иначе пачка захватит любых
@@ -26,7 +25,7 @@ export async function POST(req: NextRequest) {
     const candidates = await prisma.candidate.findMany({
       where: {
         status: "NEW",
-        source: { in: [...IMPORT_SOURCES] },
+        source: { not: null },
         portfolioLinks: { isEmpty: false },
       },
       select: { id: true },

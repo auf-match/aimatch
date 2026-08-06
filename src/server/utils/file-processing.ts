@@ -48,7 +48,8 @@ export async function extractText(
       ? await extractTextFromPdf(buffer)
       : await extractTextFromDocx(buffer);
 
-  if (!text) {
+  // Для PDF пустой текст допустим — будет отправлен как document в Claude
+  if (!text && fileType !== "pdf") {
     throw new FileProcessingError("Файл не содержит текста");
   }
 

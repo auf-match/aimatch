@@ -54,7 +54,7 @@ export async function PATCH(
       "hasBigtechExperience", "hasStudioExperience", "hasInternationalExperience",
       "aiSummary", "aiStrengths", "aiConcerns",
       "telegramContact", "email", "linkedinUrl",
-      "portfolioLinks", "status",
+      "portfolioLinks", "status", "source",
     ];
 
     const data: Record<string, unknown> = {};
