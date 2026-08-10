@@ -12,8 +12,11 @@ ENV NODE_ENV=production
 
 # --- Зависимости (кешируется, пока не менялись package*.json) ---
 COPY package.json package-lock.json ./
-# devDependencies нужны для сборки (next build, prisma, tsx) — ставим всё.
-RUN npm ci
+# devDependencies нужны для сборки: там @types/*, typescript, tailwind.
+# --include=dev обязателен: выше стоит NODE_ENV=production, а в этом режиме
+# `npm ci` молча пропускает devDependencies — и сборка падает на первом же
+# файле с «Could not find a declaration file for module ...».
+RUN npm ci --include=dev
 
 # --- Исходники ---
 COPY . .
