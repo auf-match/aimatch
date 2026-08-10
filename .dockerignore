@@ -4,7 +4,10 @@ node_modules
 .git
 .env
 uploads
-scripts/data          # 94MB Huntflow-экспорт с PII — никогда в образ
+# 94MB Huntflow-экспорт с PII — никогда в образ.
+# ВАЖНО: в .dockerignore комментарий в конце строки не работает —
+# вся строка читается как паттерн, поэтому пишем его отдельной строкой.
+scripts/data
 docs
 *.md
 .DS_Store
