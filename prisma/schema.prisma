@@ -1,5 +1,11 @@
 generator client {
   provider = "prisma-client-js"
+  // native — для локальной разработки (macOS).
+  // debian-openssl-3.0.x — для прод-образа (node:22-bookworm-slim, Debian 12).
+  // Без второго таргета Prisma собирает движок под openssl-1.1.x, и в
+  // контейнере любой запрос падает с PrismaClientInitializationError:
+  // «could not locate the Query Engine for runtime debian-openssl-3.0.x».
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
