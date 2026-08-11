@@ -1133,6 +1133,7 @@ export default function VacancyPage({
                     >
                       {/* Summary row */}
                       <div
+                        data-click-sound="press"
                         className="flex items-center gap-3 px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer"
                         onClick={() => setExpandedMatch(isExpanded ? null : m.id)}
                       >

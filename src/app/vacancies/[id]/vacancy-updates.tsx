@@ -541,6 +541,7 @@ function UpdateCard({
 
   return (
     <div
+      data-click-sound="press"
       className="rounded-lg border border-border bg-card overflow-hidden cursor-pointer transition-colors hover:border-border/70"
       onClick={onToggle}
     >

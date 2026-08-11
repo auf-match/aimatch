@@ -118,6 +118,7 @@ function CandidateCard({ row, onMenu }: { row: PipelineRow; onMenu: (row: Pipeli
   const isRejected = row.stage === "REJECTED";
   return (
     <div
+      data-click-sound="click"
       className={`rounded-lg border border-border bg-white dark:bg-zinc-900 cursor-pointer px-2.5 pt-2.5 pb-2 transition-colors hover:border-border/80 hover:bg-muted/30 ${isRejected ? "opacity-60" : ""}`}
       onClick={(e) => {
         e.stopPropagation();
