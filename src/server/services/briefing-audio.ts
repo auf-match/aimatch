@@ -20,6 +20,12 @@ import { randomUUID } from "crypto";
 import { callGemini, ClaudeServiceError } from "./claude";
 import { buildBriefingTranscribePrompt } from "../prompts/briefing-transcribe";
 import { buildBriefingParsePrompt } from "../prompts/briefing-parse";
+import { buildBriefingDetectPrompt } from "../prompts/briefing-detect-vacancies";
+import {
+  applyDetectedSegments,
+  numberTranscript,
+  type DetectedSegment,
+} from "@/lib/transcript-split";
 
 const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY || "");
 
@@ -197,6 +203,31 @@ export interface ParsedVacancyFromBriefing {
     clientNotes: FieldWithConfidence<string>;
     internalNotes: FieldWithConfidence<string>;
   };
+}
+
+/**
+ * Определить, сколько вакансий обсуждали на записи, и нарезать транскрипт.
+ *
+ * Возвращает пустой массив, если разделить не удалось — вызывающий код
+ * в этом случае идёт обычным путём «один звонок = одна вакансия».
+ * Сбой определения не должен ронять брифинг: он лишь не даёт разделения.
+ */
+export async function detectVacancySegments(
+  transcript: string,
+): Promise<DetectedSegment[]> {
+  try {
+    const raw = await callGemini([
+      { text: buildBriefingDetectPrompt(numberTranscript(transcript)) },
+    ]);
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*\n?/i, "")
+      .replace(/\n?```\s*$/, "")
+      .trim();
+    return applyDetectedSegments(transcript, JSON.parse(cleaned).segments);
+  } catch (error) {
+    console.error("[detectVacancySegments] не удалось разделить запись:", error);
+    return [];
+  }
 }
 
 /**

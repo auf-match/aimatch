@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   transcribeAudio,
   parseVacancyFromTranscript,
+  detectVacancySegments,
   getAudioMimeType,
   MAX_AUDIO_BYTES,
   BriefingAudioError,
@@ -45,7 +46,20 @@ export async function POST(req: NextRequest) {
     // Шаг 1: транскрипция
     const transcript = await transcribeAudio(buffer, mimeType);
 
-    // Шаг 2: парсинг в структуру вакансии. Если упал — отдаём
+    // Шаг 2: на одном звонке могли обсуждать несколько позиций. Если так —
+    // не парсим сразу: разбор всей записи в одну вакансию смешал бы условия
+    // разных позиций. Отдаём куски, пользователь выбирает, какую заводить.
+    const segments = await detectVacancySegments(transcript);
+    if (segments.length > 1) {
+      return NextResponse.json({
+        transcript,
+        summary: null,
+        fields: null,
+        segments: segments.map((s) => ({ label: s.label, text: s.text })),
+      });
+    }
+
+    // Шаг 3: парсинг в структуру вакансии. Если упал — отдаём
     // транскрипт без полей, чтобы пользователь не терял работу AI.
     try {
       const parsed = await parseVacancyFromTranscript(transcript);

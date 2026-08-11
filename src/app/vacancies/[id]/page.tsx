@@ -17,6 +17,7 @@ import {
 } from "@/lib/constants";
 import { PIPELINE_STAGE_LABELS, getPipelineActor } from "@/lib/pipeline";
 import { isStaleScore } from "@/lib/vacancy-update";
+import { buildVacancyPortrait, riskyPortraitSections } from "@/lib/vacancy-portrait";
 import PipelineBoard from "./pipeline-board";
 import VacancyUpdates from "./vacancy-updates";
 import InterviewInsights from "./interview-insights";
@@ -214,6 +215,39 @@ export default function VacancyPage({
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [rescoring, setRescoring] = useState(false);
+
+  // Поисковое задание для внешнего агентства
+  const [portraitOpen, setPortraitOpen] = useState(false);
+  const [portraitText, setPortraitText] = useState("");
+  const [portraitCopied, setPortraitCopied] = useState(false);
+  const [portraitCopyFailed, setPortraitCopyFailed] = useState(false);
+  const [portraitLoading, setPortraitLoading] = useState(false);
+  const [portraitError, setPortraitError] = useState("");
+  const [portraitRawOpen, setPortraitRawOpen] = useState(false);
+
+  // Генерация поискового задания. Модалку открываем сразу, до ответа модели:
+  // генерация занимает 10-30 секунд, и ждать в пустом интерфейсе плохо.
+  const generatePortrait = useCallback(async () => {
+    setPortraitOpen(true);
+    setPortraitLoading(true);
+    setPortraitError("");
+    setPortraitCopied(false);
+    setPortraitCopyFailed(false);
+    setPortraitRawOpen(false);
+    setPortraitText("");
+    try {
+      const res = await fetch(`/api/vacancies/${id}/portrait`, { method: "POST" });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error || `Ошибка ${res.status}`);
+      setPortraitText(json.brief);
+    } catch (err) {
+      setPortraitError(
+        err instanceof Error ? err.message : "Не удалось собрать задание",
+      );
+    } finally {
+      setPortraitLoading(false);
+    }
+  }, [id]);
 
   const fetchVacancy = useCallback(async () => {
     try {
@@ -520,6 +554,18 @@ export default function VacancyPage({
         {!editMode ? (
           <div className="flex items-center gap-3">
             <button
+              onClick={() => generatePortrait()}
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="8" y1="13" x2="16" y2="13" />
+                <line x1="8" y1="17" x2="14" y2="17" />
+              </svg>
+              Портрет для агентства
+            </button>
+            <button
               onClick={() => setDeleteConfirm(true)}
               className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-destructive transition-colors"
             >
@@ -595,6 +641,154 @@ export default function VacancyPage({
                 className="bg-red-500 hover:bg-red-600 text-white font-semibold"
               >
                 {deleting ? "Удаление..." : "Удалить"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Портрет для внешнего агентства ──────────────────── */}
+      {portraitOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "oklch(0 0 0 / 0.4)" }}
+          onClick={() => setPortraitOpen(false)}
+        >
+          <div
+            className="soft-card w-full max-w-2xl max-h-[85vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 mb-3">
+              <p className="t-eyebrow opacity-60">Поисковое задание для агентства</p>
+              {!portraitLoading && (
+                <button
+                  type="button"
+                  onClick={() => generatePortrait()}
+                  className="text-[12px] text-muted-foreground hover:text-foreground transition-colors shrink-0"
+                >
+                  Пересобрать
+                </button>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground mb-3">
+              Документ для рекрутера: как отличить подходящего по портфолио, кого
+              не приносить, что продавать кандидату. Название клиента, вилка,
+              состав команды и критерии скоринга в него не попадают. Перед
+              отправкой можно поправить прямо здесь.
+            </p>
+
+            {(() => {
+              const risky = riskyPortraitSections(vacancy, vacancy.clientName);
+              if (risky.length === 0) return null;
+              const quoted = risky.map((r) => `«${r}»`);
+              const listed =
+                quoted.length > 1
+                  ? `${quoted.slice(0, -1).join(", ")} и ${quoted[quoted.length - 1]}`
+                  : quoted[0];
+              return (
+                <p className="text-[12px] text-amber-600 dark:text-amber-400 mb-3">
+                  Клиент может быть назван прямым текстом — перечитай{" "}
+                  {risky.length > 1 ? "блоки" : "блок"} {listed}.
+                </p>
+              );
+            })()}
+
+            {portraitLoading && (
+              <div className="flex-1 min-h-[320px] flex items-center justify-center gap-3 rounded border border-dashed border-border">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-foreground border-t-transparent" />
+                <span className="text-sm text-muted-foreground">
+                  Собираем задание…
+                </span>
+              </div>
+            )}
+
+            {!portraitLoading && portraitError && (
+              <div className="flex-1 min-h-[320px] flex flex-col items-center justify-center gap-3 rounded border border-dashed border-border px-6 text-center">
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  {portraitError}
+                </p>
+                <Button size="sm" variant="outline" onClick={() => generatePortrait()}>
+                  Попробовать ещё раз
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPortraitText(buildVacancyPortrait(vacancy));
+                    setPortraitError("");
+                  }}
+                  className="text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  Показать данные вакансии без обработки
+                </button>
+              </div>
+            )}
+
+            {!portraitLoading && !portraitError && (
+            <textarea
+              value={portraitText}
+              onChange={(e) => {
+                setPortraitText(e.target.value);
+                setPortraitCopied(false);
+                setPortraitCopyFailed(false);
+              }}
+              spellCheck={false}
+              className="flex-1 min-h-[320px] w-full rounded border border-border bg-background px-3 py-2 font-mono text-[12px] leading-relaxed focus:outline-none focus:ring-1 focus:ring-primary resize-none"
+            />
+            )}
+
+            {!portraitLoading && !portraitError && (
+              <button
+                type="button"
+                onClick={() => setPortraitRawOpen((v) => !v)}
+                className="mt-2 self-start text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {portraitRawOpen ? "Скрыть" : "Показать"} исходные данные —
+                ровно то, что видела модель
+              </button>
+            )}
+
+            {portraitRawOpen && (
+              <pre className="mt-2 max-h-40 overflow-y-auto rounded border border-border bg-muted/30 px-3 py-2 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">
+                {buildVacancyPortrait(vacancy)}
+              </pre>
+            )}
+
+            <div className="flex gap-2 justify-end items-center mt-4">
+              <span className="mr-auto text-[12px] text-muted-foreground">
+                {portraitCopyFailed
+                  ? "Текст выделен — скопируй сам (⌘C)"
+                  : `${portraitText.length.toLocaleString("ru")} символов`}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPortraitOpen(false)}
+              >
+                Закрыть
+              </Button>
+              <Button
+                size="sm"
+                disabled={portraitLoading || !portraitText}
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(portraitText);
+                    setPortraitCopied(true);
+                    setPortraitCopyFailed(false);
+                  } catch {
+                    // Клипборд недоступен (нет https / вкладка не в фокусе) —
+                    // выделяем текст и говорим, что дальше делать руками.
+                    const ta = document.querySelector<HTMLTextAreaElement>(
+                      ".soft-card textarea",
+                    );
+                    ta?.focus();
+                    ta?.select();
+                    setPortraitCopyFailed(true);
+                  }
+                }}
+                style={{ background: "#F97029" }}
+                className="text-white font-semibold"
+              >
+                {portraitCopied ? "Скопировано" : "Скопировать"}
               </Button>
             </div>
           </div>

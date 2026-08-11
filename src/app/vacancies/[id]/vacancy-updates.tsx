@@ -665,6 +665,12 @@ interface AddFormProps {
   onCancel: () => void;
 }
 
+interface VacancyOption {
+  id: string;
+  title: string;
+  clientName: string | null;
+}
+
 function AddForm({ vacancyId, onCreated, onCancel }: AddFormProps) {
   const [rawText, setRawText] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -672,7 +678,48 @@ function AddForm({ vacancyId, onCreated, onCancel }: AddFormProps) {
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Разнесение одной записи по нескольким вакансиям
+  const [alsoOpen, setAlsoOpen] = useState(false);
+  const [options, setOptions] = useState<VacancyOption[]>([]);
+  const [alsoIds, setAlsoIds] = useState<string[]>([]);
+
+  // Список подтягиваем один раз, когда пользователь раскрыл блок.
+  useEffect(() => {
+    if (!alsoOpen || options.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/vacancies?limit=100");
+        if (!res.ok) return;
+        const json = await res.json();
+        const list: VacancyOption[] = (json.data ?? [])
+          .filter(
+            (v: { id: string; status: string }) =>
+              v.id !== vacancyId && v.status !== "CLOSED" && v.status !== "FILLED",
+          )
+          .map((v: VacancyOption) => ({
+            id: v.id,
+            title: v.title,
+            clientName: v.clientName,
+          }));
+        if (!cancelled) setOptions(list);
+      } catch {
+        /* список необязателен — молча остаёмся с пустым */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [alsoOpen, options.length, vacancyId]);
+
+  // Разнесение имеет смысл только для записи: текст проще вставить руками.
+  const splitting = audioFile !== null && alsoIds.length > 0;
   const canSubmit = rawText.trim().length > 0 || audioFile !== null;
+
+  const toggleAlso = (id: string) =>
+    setAlsoIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -683,11 +730,35 @@ function AddForm({ vacancyId, onCreated, onCancel }: AddFormProps) {
 
     const actor = getPipelineActor();
     const fd = new FormData();
-    if (rawText.trim()) fd.append("rawText", rawText.trim());
-    if (audioFile) fd.append("audio", audioFile);
     fd.append("actor", actor);
 
     try {
+      if (splitting) {
+        fd.append("audio", audioFile!);
+        fd.append("vacancyIds", vacancyId);
+        for (const id of alsoIds) fd.append("vacancyIds", id);
+
+        const res = await fetch("/api/vacancies/updates-multi", {
+          method: "POST",
+          body: fd,
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error ?? `Ошибка ${res.status}`);
+        }
+        const { updates } = (await res.json()) as {
+          updates: (VacancyUpdate & { vacancyId: string })[];
+        };
+        // На этой странице показываем только запись текущей вакансии —
+        // остальные появятся на своих страницах.
+        const mine = updates.find((u) => u.vacancyId === vacancyId);
+        if (mine) onCreated(mine);
+        return;
+      }
+
+      if (rawText.trim()) fd.append("rawText", rawText.trim());
+      if (audioFile) fd.append("audio", audioFile);
+
       const res = await fetch(`/api/vacancies/${vacancyId}/updates`, {
         method: "POST",
         body: fd,
@@ -752,6 +823,59 @@ function AddForm({ vacancyId, onCreated, onCancel }: AddFormProps) {
           onChange={(e) => setAudioFile(e.target.files?.[0] ?? null)}
         />
       </div>
+
+      {/* Разнесение записи по нескольким вакансиям */}
+      {audioFile && (
+        <div className="rounded-md border border-border bg-background/60 p-3 space-y-2">
+          {!alsoOpen ? (
+            <button
+              type="button"
+              onClick={() => setAlsoOpen(true)}
+              className="text-[12px] text-muted-foreground hover:text-foreground transition-colors"
+            >
+              На записи обсуждали ещё другие вакансии →
+            </button>
+          ) : (
+            <>
+              <p className="text-[12px] text-muted-foreground">
+                Отметь остальные вакансии со звонка. Запись расшифруем один раз,
+                разделим по позициям и в каждую отправим только её часть.
+              </p>
+              <div className="max-h-44 overflow-y-auto space-y-1 pr-1">
+                {options.length === 0 ? (
+                  <p className="text-[12px] text-muted-foreground">Загружаем список…</p>
+                ) : (
+                  options.map((v) => (
+                    <label
+                      key={v.id}
+                      className="flex items-start gap-2 text-[12px] cursor-pointer rounded px-1.5 py-1 hover:bg-muted/60"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={alsoIds.includes(v.id)}
+                        onChange={() => toggleAlso(v.id)}
+                        className="mt-0.5 accent-[#F97029]"
+                      />
+                      <span>
+                        {v.title}
+                        {v.clientName && (
+                          <span className="text-muted-foreground"> · {v.clientName}</span>
+                        )}
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+              {splitting && rawText.trim() && (
+                <p className="text-[12px] text-amber-600 dark:text-amber-400">
+                  Комментарий сверху не отправится: он относился бы сразу ко всем
+                  вакансиям. Добавь его отдельным уточнением.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {error && (
         <p className="text-[12px] text-red-600 dark:text-red-400">{error}</p>

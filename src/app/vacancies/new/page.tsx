@@ -1,6 +1,13 @@
 "use client";
 
-import { useState, useRef, useCallback, createContext, useContext } from "react";
+import {
+  useState,
+  useRef,
+  useCallback,
+  useEffect,
+  createContext,
+  useContext,
+} from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -89,6 +96,45 @@ const GRADES = Object.keys(GRADE_LABELS);
 const EMPLOYMENT_TYPES = Object.keys(EMPLOYMENT_TYPE_LABELS);
 const WORK_FORMATS = Object.keys(WORK_FORMAT_LABELS);
 
+// ── Один брифинг → несколько вакансий ────────────────────────────────
+// На звонке нередко обсуждают две позиции подряд. Запись расшифровывается
+// один раз, режется по позициям, и каждая заводится своей формой. Остаток
+// живёт в sessionStorage: после создания первой вакансии страница уходит
+// в редирект, и без этого второй кусок звонка потерялся бы.
+
+interface BriefingSegment {
+  label: string;
+  text: string;
+}
+
+const PENDING_KEY = "auf:pending-briefing-segments";
+
+function loadPendingSegments(): BriefingSegment[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = sessionStorage.getItem(PENDING_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (s): s is BriefingSegment =>
+        !!s && typeof s.label === "string" && typeof s.text === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+function savePendingSegments(segments: BriefingSegment[]) {
+  if (typeof window === "undefined") return;
+  try {
+    if (segments.length === 0) sessionStorage.removeItem(PENDING_KEY);
+    else sessionStorage.setItem(PENDING_KEY, JSON.stringify(segments));
+  } catch {
+    /* приватный режим / переполнение — не критично, просто не сохранится */
+  }
+}
+
 // ── Main Component ───────────────────────────────────────────────────
 
 export default function NewVacancyPage() {
@@ -113,6 +159,10 @@ export default function NewVacancyPage() {
   // Free-text paste state
   const [textInput, setTextInput] = useState("");
   const [textParsing, setTextParsing] = useState(false);
+
+  // Один звонок — несколько позиций: куски, из которых ещё не заведена вакансия
+  const [segments, setSegments] = useState<BriefingSegment[] | null>(null);
+  const [pending, setPending] = useState<BriefingSegment[]>([]);
 
   const update = <K extends keyof VacancyFormData>(
     field: K,
@@ -216,6 +266,13 @@ export default function NewVacancyPage() {
         throw new Error(json.error || `Ошибка ${res.status}`);
       }
 
+      // На записи несколько позиций — не заполняем форму вслепую,
+      // а даём выбрать, какую заводим сейчас.
+      if (Array.isArray(json.segments) && json.segments.length > 1) {
+        setSegments(json.segments as BriefingSegment[]);
+        return;
+      }
+
       // Сохраняем транскрипт + summary даже если поля не пришли (parseError)
       setBriefingTranscript(json.transcript || null);
       setBriefingSummary(json.summary || null);
@@ -243,6 +300,53 @@ export default function NewVacancyPage() {
     } finally {
       setAudioParsing(false);
     }
+  }, []);
+
+  // ── Один звонок → несколько вакансий ─────────────────────────────
+  const handleSegmentPick = useCallback(
+    async (chosen: BriefingSegment, all: BriefingSegment[]) => {
+      setTextParsing(true);
+      setError("");
+      try {
+        const res = await fetch("/api/vacancies/parse-segment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: chosen.text }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || `Ошибка ${res.status}`);
+
+        const { data: newData, hints } = buildFieldsUpdate(json.fields as ParsedFields);
+        setData((prev) => ({ ...prev, ...newData }));
+        setFieldHints(hints);
+        // В вакансию сохраняем ТОЛЬКО её часть звонка: иначе в карточке
+        // одной позиции лежал бы разговор про соседнюю.
+        setBriefingTranscript(chosen.text);
+        setBriefingSummary(json.summary ?? null);
+
+        const rest = all.filter((s) => s.label !== chosen.label);
+        setPending(rest);
+        savePendingSegments(rest);
+        setSegments(null);
+        setBriefingLoaded(true);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? `Не удалось разобрать фрагмент: ${err.message}. Заполните форму вручную.`
+            : "Не удалось разобрать фрагмент.",
+        );
+      } finally {
+        setTextParsing(false);
+      }
+    },
+    [],
+  );
+
+  // Остаток звонка переживает создание первой вакансии: после редиректа
+  // пользователь возвращается на эту же страницу и продолжает со второй.
+  useEffect(() => {
+    const stored = loadPendingSegments();
+    if (stored.length > 0) setPending(stored);
   }, []);
 
   // ── Free-text paste ──────────────────────────────────────────────
@@ -389,6 +493,77 @@ export default function NewVacancyPage() {
             </button>
           ) : null}
         </div>
+
+        {/* Выбор позиции: на записи распознано несколько вакансий */}
+        {segments && segments.length > 1 && (
+          <div className="mb-6 rounded-lg border border-foreground/10 bg-muted/30 px-5 py-4">
+            <p className="text-sm font-medium mb-1">
+              На записи {segments.length} позиции
+            </p>
+            <p className="text-xs text-muted-foreground mb-3">
+              Заводим по одной. Выбери, с какой начать — остальные останутся
+              здесь, и ты создашь их сразу после сохранения этой.
+            </p>
+            <div className="space-y-2">
+              {segments.map((s) => (
+                <button
+                  key={s.label}
+                  type="button"
+                  disabled={textParsing}
+                  onClick={() => handleSegmentPick(s, segments)}
+                  className="w-full text-left rounded-md border border-foreground/10 bg-background px-4 py-3 text-sm hover:border-foreground/30 transition-colors disabled:opacity-50"
+                >
+                  <span className="font-medium">{s.label}</span>
+                  <span className="block text-xs text-muted-foreground mt-0.5">
+                    фрагмент на {s.text.length.toLocaleString("ru")} символов
+                  </span>
+                </button>
+              ))}
+            </div>
+            {textParsing && (
+              <p className="mt-3 text-xs text-muted-foreground">
+                AI заполняет форму по выбранному фрагменту…
+              </p>
+            )}
+          </div>
+        )}
+
+        {/* Остаток звонка: позиции, которые ещё предстоит завести */}
+        {!segments && pending.length > 0 && (
+          <div className="mb-6 rounded-lg border border-[#F97029]/30 bg-[#F97029]/5 px-5 py-4">
+            <p className="text-sm font-medium mb-1">
+              С того же звонка осталось: {pending.length}
+            </p>
+            <p className="text-xs text-muted-foreground mb-3">
+              {briefingLoaded
+                ? "Сохрани текущую вакансию, потом вернись сюда и заведи следующую."
+                : "Продолжи с оставшейся позиции — фрагмент звонка сохранён."}
+            </p>
+            <div className="space-y-2">
+              {pending.map((s) => (
+                <button
+                  key={s.label}
+                  type="button"
+                  disabled={textParsing || briefingLoaded}
+                  onClick={() => handleSegmentPick(s, pending)}
+                  className="w-full text-left rounded-md border border-foreground/10 bg-background px-4 py-3 text-sm hover:border-foreground/30 transition-colors disabled:opacity-50"
+                >
+                  <span className="font-medium">{s.label}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setPending([]);
+                savePendingSegments([]);
+              }}
+              className="mt-3 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Больше не нужно — убрать
+            </button>
+          </div>
+        )}
 
         {/* Briefing summary card — показываем над формой когда вакансия пришла из аудио */}
         {briefingLoaded && briefingSummary && (

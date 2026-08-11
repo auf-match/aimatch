@@ -51,6 +51,24 @@ const buttonVariants = cva(
   }
 )
 
+/**
+ * Звук по варианту (см. lib/click-sound.ts):
+ *   default / accent — основное действие, играет файл /click.mp3
+ *   остальные        — процедурный пресет, заметно тише и суше
+ *
+ * Отключить на конкретной кнопке: <Button data-click-sound="false">.
+ */
+const VARIANT_SOUND: Record<string, string> = {
+  default: "",       // "" — основной звук из файла
+  accent: "",
+  tinted: "click",
+  outline: "click",
+  secondary: "click",
+  ghost: "click",
+  destructive: "click",
+  link: "press",     // текстовая ссылка — самый мягкий звук
+}
+
 function Button({
   className,
   variant = "default",
@@ -60,6 +78,7 @@ function Button({
   return (
     <ButtonPrimitive
       data-slot="button"
+      data-click-sound={VARIANT_SOUND[variant ?? "default"]}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />

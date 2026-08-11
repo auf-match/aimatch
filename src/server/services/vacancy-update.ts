@@ -52,7 +52,6 @@ export async function processVacancyUpdate(updateId: string): Promise<void> {
     if (!update) return;
     if (update.status !== "PROCESSING") return;
 
-    let updateText = update.rawText?.trim() || "";
     let transcript: string | null = update.transcript;
 
     if (update.kind === "AUDIO" && update.audioFileUrl && !transcript) {
@@ -67,8 +66,16 @@ export async function processVacancyUpdate(updateId: string): Promise<void> {
         where: { id: updateId },
         data: { transcript },
       });
-      updateText = [updateText, transcript].filter(Boolean).join("\n\n").trim();
     }
+
+    // Текст собираем из того, что есть в записи, а не только из свежей
+    // транскрибации: транскрипт может быть проставлен заранее (нарезка одного
+    // звонка на несколько вакансий) или остаться с прошлой попытки (retry
+    // после падения разбора). В обоих случаях блок выше не выполняется.
+    const updateText = [update.rawText?.trim() || "", transcript || ""]
+      .filter(Boolean)
+      .join("\n\n")
+      .trim();
 
     if (!updateText) {
       await prisma.vacancyUpdate.update({
