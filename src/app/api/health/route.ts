@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/server/db";
+import { prisma, poolSettings } from "@/server/db";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +33,7 @@ export async function GET() {
     GEMINI_API_KEY_set: !!process.env.GEMINI_API_KEY,
     UPLOAD_DIR: process.env.UPLOAD_DIR ?? null,
     BASIC_AUTH_set: !!process.env.BASIC_AUTH_USER && !!process.env.BASIC_AUTH_PASS,
+    pool: poolSettings(),
   };
 
   // Пробуем реально сходить в базу.
