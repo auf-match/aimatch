@@ -20,7 +20,7 @@ export async function POST(
     // Вернуть в очередь, чтобы UI сразу показал «в работе»
     await prisma.candidate.update({ where: { id }, data: { status: "NEW" } });
 
-    // Fire-and-forget: рассчитано на долгоживущий Node-процесс (VPS/Railway),
+    // Fire-and-forget: рассчитано на долгоживущий Node-процесс (обычный сервер, не serverless),
     // как и в analyze-batch — короткоживущий serverless здесь не переживёт запрос.
     void analyzeImportedCandidate(id).catch((err) =>
       console.error("analyze-import background threw:", err),
