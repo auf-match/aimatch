@@ -81,6 +81,8 @@ src/
 
 ## Деплой
 
+Рабочий адрес: **https://match.pragmatica.design** (под Basic Auth).
+
 Приложение разворачивается из `Dockerfile` на любом контейнерном хостинге.
 Пошаговая инструкция — в [`DEPLOY.md`](DEPLOY.md).
 
