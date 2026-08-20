@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { activeHref } from "@/lib/sidebar-active";
 
 const NAV_ITEMS = [
   { href: "/", label: "Дашборд", icon: HomeIcon },
@@ -18,6 +19,12 @@ const QUICK_ITEMS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  // Считаем по всем пунктам сразу: иначе навигация и быстрые действия
+  // найдут каждая своего победителя и подсветятся оба.
+  const active = activeHref(
+    [...NAV_ITEMS, ...QUICK_ITEMS].map((i) => i.href),
+    pathname ?? "/",
+  );
 
   return (
     <aside className="fixed inset-y-0 left-0 z-30 flex w-64 flex-col bg-card shadow-[1px_0_0_0_oklch(0_0_0/0.05)]">
@@ -37,13 +44,7 @@ export function Sidebar() {
       {/* Nav */}
       <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-1 space-y-0.5">
         {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
-          // Несколько пунктов могут совпасть по startsWith (например
-          // /candidates и /candidates/analyze-status) — активен только
-          // пункт с самым длинным (самым специфичным) совпадением.
-          const bestMatch = NAV_ITEMS
-            .filter((item) => (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href)))
-            .sort((a, b) => b.href.length - a.href.length)[0];
-          const isActive = bestMatch?.href === href;
+          const isActive = active === href;
           return (
             <Link
               key={href}
@@ -51,13 +52,13 @@ export function Sidebar() {
               className={cn(
                 "flex items-center gap-3 [border-radius:var(--r-button)] px-3 py-2.5 text-[13.5px] font-medium transition-all",
                 isActive
-                  ? "bg-foreground text-background shadow-[0_1px_4px_0_oklch(0_0_0/0.15)]"
+                  ? "bg-[#F97029] text-white shadow-[0_1px_4px_0_oklch(0_0_0/0.12)]"
                   : "text-muted-foreground hover:bg-secondary hover:text-foreground"
               )}
             >
               <span className={cn(
                 "flex h-5 w-5 items-center justify-center shrink-0",
-                isActive ? "text-background" : "text-muted-foreground"
+                isActive ? "text-white" : "text-muted-foreground"
               )}>
                 <Icon />
               </span>
@@ -76,12 +77,15 @@ export function Sidebar() {
               href={href}
               className={cn(
                 "flex items-center gap-3 [border-radius:var(--r-button)] px-3 py-2.5 text-[13.5px] font-medium transition-all",
-                pathname === href
-                  ? "bg-foreground text-background"
+                active === href
+                  ? "bg-[#F97029] text-white"
                   : "text-muted-foreground hover:bg-secondary hover:text-foreground"
               )}
             >
-              <span className="flex h-5 w-5 items-center justify-center shrink-0 text-primary">
+              <span className={cn(
+                "flex h-5 w-5 items-center justify-center shrink-0",
+                active === href ? "text-white" : "text-primary"
+              )}>
                 <Icon />
               </span>
               {label}

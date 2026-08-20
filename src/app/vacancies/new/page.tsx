@@ -13,6 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import Link from "next/link";
+import { RangeSlider } from "@/components/ui/range-slider";
+import { DropZone } from "@/components/ui/drop-zone";
 
 // ── Field hints from AI briefing parser ─────────────────────────────
 // Когда вакансия создана из записи Zoom-брифинга, AI помечает каждое поле
@@ -154,7 +156,9 @@ export default function NewVacancyPage() {
   const [briefingTranscript, setBriefingTranscript] = useState<string | null>(null);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
   const [fieldHints, setFieldHints] = useState<Map<string, FieldStatus>>(new Map());
-  const audioInputRef = useRef<HTMLInputElement>(null);
+
+  // Каким способом заполняем форму: показываем один ввод, а не все три сразу
+  const [way, setWay] = useState<"audio" | "pdf" | "text">("audio");
 
   // Free-text paste state
   const [textInput, setTextInput] = useState("");
@@ -162,7 +166,15 @@ export default function NewVacancyPage() {
 
   // Один звонок — несколько позиций: куски, из которых ещё не заведена вакансия
   const [segments, setSegments] = useState<BriefingSegment[] | null>(null);
+  const [transcriptLength, setTranscriptLength] = useState(0);
   const [pending, setPending] = useState<BriefingSegment[]>([]);
+
+  // Сколько полей AI заполнил уверенно, где сомневается, чего не нашёл.
+  // Считаем от подсказок: каждая — это поле, требующее внимания.
+  const totalFieldCount = Object.keys(INITIAL_DATA).length;
+  const lowCount = [...fieldHints.values()].filter((v) => v === "low").length;
+  const missingCount = [...fieldHints.values()].filter((v) => v === "missing").length;
+  const filledCount = totalFieldCount - missingCount;
 
   const update = <K extends keyof VacancyFormData>(
     field: K,
@@ -270,6 +282,7 @@ export default function NewVacancyPage() {
       // а даём выбрать, какую заводим сейчас.
       if (Array.isArray(json.segments) && json.segments.length > 1) {
         setSegments(json.segments as BriefingSegment[]);
+        setTranscriptLength(String(json.transcript ?? "").length);
         return;
       }
 
@@ -458,18 +471,32 @@ export default function NewVacancyPage() {
           </p>
         </div>
 
+        {/* Переключатель способов: раньше три кнопки шли стопкой и все три
+            занимали экран, хотя пользуется всегда одним. */}
+        {!briefingLoaded && !pdfLoaded && !audioParsing && !pdfParsing && !textParsing && (
+          <div className="mb-4 inline-flex rounded-full border border-border bg-card p-1">
+            {([
+              ["audio", "Запись брифинга"],
+              ["pdf", "PDF от клиента"],
+              ["text", "Текстом"],
+            ] as const).map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setWay(id)}
+                className={`rounded-full px-4 py-1.5 text-[13px] leading-[18px] transition-colors ${
+                  way === id
+                    ? "bg-[#F97029] font-medium text-white"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Audio briefing upload */}
         <div className="mb-3">
-          <input
-            ref={audioInputRef}
-            type="file"
-            accept=".m4a,.mp3,.aac,audio/mp4,audio/mpeg,audio/aac"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) handleAudioUpload(f);
-            }}
-          />
           {audioParsing ? (
             <div className="flex items-center gap-3 rounded-lg border border-dashed border-foreground/20 bg-muted/30 px-5 py-4">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-foreground border-t-transparent" />
@@ -477,20 +504,15 @@ export default function NewVacancyPage() {
                 AI расшифровывает встречу и заполняет вакансию... ~1-3 мин
               </span>
             </div>
-          ) : !briefingLoaded && !pdfLoaded ? (
-            <button
-              onClick={() => audioInputRef.current?.click()}
+          ) : !briefingLoaded && !pdfLoaded && way === "audio" ? (
+            <DropZone
+              accept=".m4a,.mp3,.aac"
+              formats="M4A, MP3, AAC"
+              maxMb={200}
               disabled={pdfParsing}
-              className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-foreground/20 px-5 py-4 text-sm text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors disabled:opacity-50"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
-                <line x1="12" y1="19" x2="12" y2="23" />
-                <line x1="8" y1="23" x2="16" y2="23" />
-              </svg>
-              Загрузить запись брифинга (.m4a) — AI расшифрует и заполнит форму
-            </button>
+              title="Запись брифинга"
+              onFile={handleAudioUpload}
+            />
           ) : null}
         </div>
 
@@ -504,21 +526,45 @@ export default function NewVacancyPage() {
               Заводим по одной. Выбери, с какой начать — остальные останутся
               здесь, и ты создашь их сразу после сохранения этой.
             </p>
-            <div className="space-y-2">
-              {segments.map((s) => (
-                <button
-                  key={s.label}
-                  type="button"
-                  disabled={textParsing}
-                  onClick={() => handleSegmentPick(s, segments)}
-                  className="w-full text-left rounded-md border border-foreground/10 bg-background px-4 py-3 text-sm hover:border-foreground/30 transition-colors disabled:opacity-50"
-                >
-                  <span className="font-medium">{s.label}</span>
-                  <span className="block text-xs text-muted-foreground mt-0.5">
-                    фрагмент на {s.text.length.toLocaleString("ru")} символов
-                  </span>
-                </button>
-              ))}
+            <div className="space-y-2.5">
+              {(() => {
+                // Доля разговора: показывает, что запись разобрана целиком,
+                // и сколько осталось за пределами позиций — приветствия,
+                // оплата, болтовня. Без этого непонятно, не потерян ли кусок.
+                const covered = segments.reduce((n, x) => n + x.text.length, 0);
+                const whole = Math.max(covered, transcriptLength || covered);
+                return segments.map((s, i) => {
+                  const share = Math.round((s.text.length / whole) * 100);
+                  return (
+                    <button
+                      key={s.label}
+                      type="button"
+                      disabled={textParsing}
+                      onClick={() => handleSegmentPick(s, segments)}
+                      className="group flex w-full items-center gap-4 rounded-xl border border-border bg-card p-4 text-left transition-all hover:-translate-y-0.5 hover:border-[#F97029]/50 disabled:opacity-50 disabled:hover:translate-y-0"
+                    >
+                      <span className="t-caption font-mono">
+                        {String(i + 1).padStart(2, "0")}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="t-card-title block">{s.label}</span>
+                        <span className="t-caption mt-1 block font-mono">
+                          {s.text.length.toLocaleString("ru")} символов · {share}% разговора
+                        </span>
+                        <span className="mt-2 block h-[3px] overflow-hidden rounded-full bg-secondary">
+                          <span
+                            className="block h-full rounded-full bg-[#F97029]/70"
+                            style={{ width: `${share}%` }}
+                          />
+                        </span>
+                      </span>
+                      <span className="text-muted-foreground transition-transform group-hover:translate-x-0.5">
+                        →
+                      </span>
+                    </button>
+                  );
+                });
+              })()}
             </div>
             {textParsing && (
               <p className="mt-3 text-xs text-muted-foreground">
@@ -567,15 +613,34 @@ export default function NewVacancyPage() {
 
         {/* Briefing summary card — показываем над формой когда вакансия пришла из аудио */}
         {briefingLoaded && briefingSummary && (
-          <div className="mb-6 rounded-lg border border-foreground/10 bg-muted/30 px-5 py-4">
-            <div className="mb-2 flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">
-                🎙️ Саммари брифинга
+          <div className="mb-6 overflow-hidden rounded-xl border border-[#F97029]/25 bg-[#F97029]/[0.05]">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[#F97029]/20 px-5 py-3">
+              <span className="t-micro rounded-full bg-[#F97029] px-2 py-[3px] text-white">
+                из записи
               </span>
+              <span className="t-caption font-mono">брифинг разобран AI</span>
             </div>
-            <p className="text-sm leading-relaxed whitespace-pre-line">
+            <div className="px-5 py-4">
+            <p className="t-body leading-relaxed whitespace-pre-line">
               {briefingSummary}
             </p>
+
+            {/* Счёт полей: сколько AI заполнил, где не уверен, чего не нашёл.
+                Без него подсветка отдельных полей теряется среди трёх десятков
+                и человек не понимает, сколько работы осталось. */}
+            <div className="mt-3.5 flex flex-wrap gap-x-4 gap-y-1">
+              <span className="t-caption">
+                заполнено <b className="text-foreground">{filledCount}</b> из {totalFieldCount} полей
+              </span>
+              {lowCount > 0 && (
+                <span className="t-caption text-amber-700 dark:text-amber-400">
+                  {lowCount} требуют проверки
+                </span>
+              )}
+              {missingCount > 0 && (
+                <span className="t-caption">{missingCount} не нашлись</span>
+              )}
+            </div>
             {briefingTranscript && (
               <div className="mt-3">
                 <button
@@ -591,6 +656,7 @@ export default function NewVacancyPage() {
                 )}
               </div>
             )}
+            </div>
           </div>
         )}
 
@@ -635,7 +701,7 @@ export default function NewVacancyPage() {
         )}
 
         {/* PDF upload */}
-        <div className="mb-8">
+        <div className={`mb-8 ${way !== "pdf" && !pdfLoaded && !pdfParsing ? "hidden" : ""}`}>
           <input
             ref={pdfInputRef}
             type="file"
@@ -698,21 +764,19 @@ export default function NewVacancyPage() {
               </div>
             </div>
           ) : (
-            <button
-              onClick={() => pdfInputRef.current?.click()}
-              className="w-full flex items-center justify-center gap-2 rounded-lg border border-dashed border-foreground/20 px-5 py-4 text-sm text-muted-foreground hover:border-foreground/40 hover:text-foreground transition-colors"
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                <polyline points="14 2 14 8 20 8" />
-              </svg>
-              Загрузить PDF с описанием — AI заполнит форму
-            </button>
+            <DropZone
+              accept=".pdf,.docx"
+              formats="PDF или DOCX"
+              maxMb={20}
+              disabled={audioParsing}
+              title="Описание от клиента"
+              onFile={handlePdfUpload}
+            />
           )}
         </div>
 
         {/* Free-text paste — заполнение формы из вставленного текста */}
-        {!briefingLoaded && !pdfLoaded && !audioParsing && !pdfParsing && (
+        {!briefingLoaded && !pdfLoaded && !audioParsing && !pdfParsing && (way === "text" || textParsing) && (
           <div className="mb-8 space-y-2">
             {textParsing ? (
               <div className="flex items-center gap-3 rounded-lg border border-dashed border-foreground/20 bg-muted/30 px-5 py-4">
@@ -759,7 +823,7 @@ export default function NewVacancyPage() {
                 flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-colors
                 ${
                   i === currentStep
-                    ? "bg-foreground text-background"
+                    ? "bg-[#F97029] text-white"
                     : i < currentStep
                       ? "bg-muted text-foreground cursor-pointer hover:bg-muted/80"
                       : "bg-muted/50 text-muted-foreground"
@@ -776,6 +840,23 @@ export default function NewVacancyPage() {
 
         {/* Step content — hidden when PDF loaded and not editing */}
         <FieldHintsContext.Provider value={fieldHints}>
+        {/* Легенда подсветки: без неё жёлтая рамка выглядит просто ошибкой,
+            а пунктир — незаполненным полем. Показываем только когда AI
+            действительно что-то пометил. */}
+        {fieldHints.size > 0 && !pdfLoaded && !briefingLoaded && (
+          <div className="t-caption mb-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg bg-secondary/60 px-4 py-2.5">
+            <span className="font-medium text-foreground">Как читать подсветку</span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded border border-amber-300 bg-amber-50" />
+              AI не уверен — проверь
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="h-3 w-3 rounded border border-dashed border-border" />
+              не нашёл в записи
+            </span>
+          </div>
+        )}
+
         <div className={`space-y-6 ${pdfLoaded || briefingLoaded ? "hidden" : ""}`}>
           {currentStep === 0 && <Step1 data={data} update={update} />}
           {currentStep === 1 && <Step2 data={data} update={update} />}
@@ -1268,41 +1349,43 @@ function Step5({
           {data.scoringCriteria.length > 0 && (
             <div className="space-y-2">
               {data.scoringCriteria.map((c, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-2 rounded-lg border px-3 py-2"
-                >
-                  <span className="flex-1 text-sm">{c.criterion}</span>
-                  <select
-                    value={c.type}
-                    onChange={(e) => updateCriterion(i, "type", e.target.value)}
-                    className="h-7 [border-radius:var(--r-icon)] border border-input bg-background px-2 text-xs outline-none"
-                  >
-                    <option value="required">Обязательный</option>
-                    <option value="nice_to_have">Желательный</option>
-                    <option value="stop_factor">Стоп-фактор</option>
-                  </select>
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="range"
-                      min={0}
-                      max={100}
-                      value={c.weight}
-                      onChange={(e) =>
-                        updateCriterion(i, "weight", parseInt(e.target.value))
-                      }
-                      className="w-20 accent-foreground"
-                    />
-                    <span className="w-8 text-right text-xs text-muted-foreground">
-                      {c.weight}%
-                    </span>
+                <div key={i} className="rounded-xl border border-border bg-card p-4">
+                  <div className="mb-3 flex flex-wrap items-center gap-2.5">
+                    <span className="t-card-title min-w-0 flex-1">{c.criterion}</span>
+                    <select
+                      value={c.type}
+                      onChange={(e) => updateCriterion(i, "type", e.target.value)}
+                      className="h-7 [border-radius:var(--r-icon)] border border-input bg-background px-2 text-xs outline-none"
+                    >
+                      <option value="required">Обязательный</option>
+                      <option value="nice_to_have">Желательный</option>
+                      <option value="stop_factor">Стоп-фактор</option>
+                    </select>
+                    {c.type !== "stop_factor" && (
+                      <span className="t-card-title w-11 text-right tabular-nums">
+                        {c.weight}%
+                      </span>
+                    )}
+                    <button
+                      onClick={() => removeCriterion(i)}
+                      className="px-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label={`Убрать критерий «${c.criterion}»`}
+                    >
+                      &times;
+                    </button>
                   </div>
-                  <button
-                    onClick={() => removeCriterion(i)}
-                    className="text-muted-foreground hover:text-foreground transition-colors text-sm px-1"
-                  >
-                    &times;
-                  </button>
+
+                  {c.type !== "stop_factor" ? (
+                    <RangeSlider
+                      label={`Вес критерия «${c.criterion}»`}
+                      value={c.weight}
+                      onChange={(v) => updateCriterion(i, "weight", v)}
+                    />
+                  ) : (
+                    <p className="t-caption">
+                      Кандидаты с этим признаком отсеиваются до скоринга — вес не нужен.
+                    </p>
+                  )}
                 </div>
               ))}
             </div>

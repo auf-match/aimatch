@@ -18,6 +18,8 @@ import {
 import { PIPELINE_STAGE_LABELS, getPipelineActor } from "@/lib/pipeline";
 import { isStaleScore } from "@/lib/vacancy-update";
 import { buildVacancyPortrait, riskyPortraitSections } from "@/lib/vacancy-portrait";
+import { RangeSlider } from "@/components/ui/range-slider";
+import { ConfettiBurst } from "@/components/ui/confetti-burst";
 import PipelineBoard from "./pipeline-board";
 import VacancyUpdates from "./vacancy-updates";
 import InterviewInsights from "./interview-insights";
@@ -199,6 +201,10 @@ export default function VacancyPage({
   const [expandedMatch, setExpandedMatch] = useState<string | null>(null);
   const [pipelineIds, setPipelineIds] = useState<Map<string, string>>(new Map());
   const [approveLoading, setApproveLoading] = useState<string | null>(null);
+  // Кандидат, которого только что одобрили, и метка запуска вспышки.
+  // Конфетти летит по нажатию — отклик должен быть мгновенным, а не ждать
+  // ответа сервера.
+  const [celebrate, setCelebrate] = useState<{ id: string; at: number } | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [matchingDone, setMatchingDone] = useState(false);
   const [softening, setSoftening] = useState(false);
@@ -1191,24 +1197,34 @@ export default function VacancyPage({
                       {isExpanded && (
                         <div className="border-t px-4 py-4 space-y-4 bg-muted/5">
                           <div className="flex items-center gap-2">
-                            {inPipeline ? (
-                              <span className="inline-flex items-center rounded-md bg-emerald-100 dark:bg-emerald-900/40 px-2.5 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                                В воронке · {PIPELINE_STAGE_LABELS[pipelineStage as keyof typeof PIPELINE_STAGE_LABELS] ?? pipelineStage}
-                              </span>
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant="default"
-                                disabled={approveLoading === m.candidate.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleApprove(m.candidate.id);
-                                }}
-                                className="text-xs"
-                              >
-                                {approveLoading === m.candidate.id ? "..." : "Одобрить"}
-                              </Button>
-                            )}
+                            {/* Обёртка общая для обоих состояний: после успеха
+                                кнопка сменяется плашкой, и если держать конфетти
+                                внутри ветки с кнопкой, оно исчезнет вместе с ней,
+                                не успев показаться. */}
+                            <span className="relative inline-flex">
+                              {inPipeline ? (
+                                <span className="inline-flex items-center rounded-md bg-emerald-100 dark:bg-emerald-900/40 px-2.5 py-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                                  В воронке · {PIPELINE_STAGE_LABELS[pipelineStage as keyof typeof PIPELINE_STAGE_LABELS] ?? pipelineStage}
+                                </span>
+                              ) : (
+                                <Button
+                                  size="sm"
+                                  variant="default"
+                                  disabled={approveLoading === m.candidate.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCelebrate({ id: m.candidate.id, at: Date.now() });
+                                    handleApprove(m.candidate.id);
+                                  }}
+                                  className="text-xs"
+                                >
+                                  {approveLoading === m.candidate.id ? "..." : "Одобрить"}
+                                </Button>
+                              )}
+                              <ConfettiBurst
+                                fire={celebrate?.id === m.candidate.id ? celebrate.at : null}
+                              />
+                            </span>
                             <Link
                               href={`/candidates/${m.candidate.id}`}
                               onClick={(e) => e.stopPropagation()}
@@ -2112,22 +2128,41 @@ function VCriteriaEditor({ criteria, onChange }: { criteria: ScoringCriterion[];
         {criteria.length > 0 && (
           <div className="space-y-2">
             {criteria.map((c, i) => (
-              <div key={i} className="flex items-center gap-2 [border-radius:var(--r-button)] border px-3 py-2">
-                <span className="flex-1 text-sm">{c.criterion}</span>
-                <select
-                  value={c.type}
-                  onChange={(e) => update(i, "type", e.target.value)}
-                  className="h-7 [border-radius:var(--r-icon)] border border-input bg-background px-2 text-xs outline-none"
-                >
-                  <option value="required">Обязательный</option>
-                  <option value="nice_to_have">Желательный</option>
-                  <option value="stop_factor">Стоп-фактор</option>
-                </select>
-                <div className="flex items-center gap-1">
-                  <input type="range" min={0} max={100} value={c.weight} onChange={(e) => update(i, "weight", parseInt(e.target.value))} className="w-20 accent-foreground" />
-                  <span className="w-8 text-right text-xs text-muted-foreground">{c.weight}%</span>
+              <div key={i} className="rounded-xl border border-border bg-card p-4">
+                <div className="mb-3 flex flex-wrap items-center gap-2.5">
+                  <span className="t-card-title min-w-0 flex-1">{c.criterion}</span>
+                  <select
+                    value={c.type}
+                    onChange={(e) => update(i, "type", e.target.value)}
+                    className="h-7 [border-radius:var(--r-icon)] border border-input bg-background px-2 text-xs outline-none"
+                  >
+                    <option value="required">Обязательный</option>
+                    <option value="nice_to_have">Желательный</option>
+                    <option value="stop_factor">Стоп-фактор</option>
+                  </select>
+                  {c.type !== "stop_factor" && (
+                    <span className="t-card-title w-11 text-right tabular-nums">{c.weight}%</span>
+                  )}
+                  <button
+                    onClick={() => remove(i)}
+                    className="px-1 text-sm text-muted-foreground hover:text-foreground"
+                    aria-label={`Убрать критерий «${c.criterion}»`}
+                  >
+                    &times;
+                  </button>
                 </div>
-                <button onClick={() => remove(i)} className="text-muted-foreground hover:text-foreground text-sm px-1">&times;</button>
+
+                {c.type !== "stop_factor" ? (
+                  <RangeSlider
+                    label={`Вес критерия «${c.criterion}»`}
+                    value={c.weight}
+                    onChange={(v) => update(i, "weight", v)}
+                  />
+                ) : (
+                  <p className="t-caption">
+                    Кандидаты с этим признаком отсеиваются до скоринга — вес не нужен.
+                  </p>
+                )}
               </div>
             ))}
           </div>
