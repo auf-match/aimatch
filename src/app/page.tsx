@@ -105,7 +105,7 @@ export default function Home() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
 
         {/* Кандидаты */}
         <div className="soft-card flex flex-col gap-4">
@@ -135,27 +135,6 @@ export default function Home() {
           >
             Смотреть все →
           </Link>
-        </div>
-
-        {/* Быстрые действия */}
-        <div className="soft-card flex flex-col gap-3">
-          <p className="t-eyebrow">Действия</p>
-          <div className="flex flex-col gap-2 mt-1">
-            <Link
-              href="/candidates/upload"
-              className="pill pill--outline flex justify-center"
-              style={{ height: "40px", fontSize: "13px" }}
-            >
-              + Загрузить кандидатов
-            </Link>
-            <Link
-              href="/vacancies/new"
-              className="pill pill--outline flex justify-center"
-              style={{ height: "40px", fontSize: "13px" }}
-            >
-              + Создать вакансию
-            </Link>
-          </div>
         </div>
 
       </div>
