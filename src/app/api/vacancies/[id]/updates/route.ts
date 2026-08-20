@@ -69,7 +69,7 @@ export async function POST(
     });
 
     // Fire-and-forget: обработка идёт в фоне, клиент поллит GET.
-    // ВАЖНО: рассчитано на долгоживущий Node-процесс (VPS / Railway / Render).
+    // ВАЖНО: рассчитано на долгоживущий Node-процесс (не serverless).
     // На serverless с заморозкой функции после ответа (Vercel) фон НЕ выполнится —
     // тогда нужно перейти на синхронный inline-вариант или внешнюю очередь.
     void processVacancyUpdate(created.id).catch((err) => {
