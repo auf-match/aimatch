@@ -27,6 +27,13 @@ RUN npx prisma generate
 # Chromium + системные зависимости для Playwright.
 RUN npx playwright install --with-deps chromium
 
+# DATABASE_URL на этапе сборки: `next build` инстанцирует PrismaClient при
+# сборе данных страниц, и без переменной падает ещё до обращения к базе.
+# На Railway переменные сервиса попадали в сборку сами, в чистом `docker build`
+# — нет. Значение фиктивное, соединения не открывает: настоящее приходит в
+# рантайме из окружения контейнера. ARG, а не ENV — не остаётся в образе.
+ARG DATABASE_URL=postgresql://build:build@localhost:5432/build
+
 # Прод-сборка Next.js.
 RUN npm run build
 
