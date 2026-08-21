@@ -18,6 +18,7 @@ import {
 import { PIPELINE_STAGE_LABELS, getPipelineActor } from "@/lib/pipeline";
 import { isStaleScore } from "@/lib/vacancy-update";
 import { buildVacancyPortrait, riskyPortraitSections } from "@/lib/vacancy-portrait";
+import { toPlainText } from "@/lib/portrait-plain";
 import { RangeSlider } from "@/components/ui/range-slider";
 import { ConfettiBurst } from "@/components/ui/confetti-burst";
 import PipelineBoard from "./pipeline-board";
@@ -245,7 +246,10 @@ export default function VacancyPage({
       const res = await fetch(`/api/vacancies/${id}/portrait`, { method: "POST" });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error || `Ошибка ${res.status}`);
-      setPortraitText(json.brief);
+      // Разметку снимаем сразу: в поле должно лежать ровно то, что уедет
+      // в буфер и вставится в Telegram — иначе правку пришлось бы делать
+      // руками уже в мессенджере.
+      setPortraitText(toPlainText(json.brief ?? ""));
     } catch (err) {
       setPortraitError(
         err instanceof Error ? err.message : "Не удалось собрать задание",
