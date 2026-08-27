@@ -9,7 +9,12 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 // Verified available with current free-tier API key (тестировал 2026-04).
 // gemini-2.5-flash-lite has highest availability on free tier — proven to work
 // when other models return 503/429.
-const MODEL_PRIORITY = [
+// Основную модель можно подменить через окружение: оценка визуала требует
+// старшей модели, а разбор текста прекрасно идёт на flash. Без переменной
+// список остаётся прежним.
+const MODEL_PRIORITY = process.env.GEMINI_MODEL
+  ? [process.env.GEMINI_MODEL, "gemini-2.5-flash", "gemini-2.5-flash-lite"]
+  : [
   "gemini-2.5-flash",        // best quality, but often 503 in peak hours
   "gemini-2.5-flash-lite",   // reliable fallback, lighter model, more free quota
   "gemini-flash-latest",     // alias — may resolve to a working version
@@ -50,7 +55,35 @@ function classifyError(error: unknown): "overloaded" | "quota_daily" | "quota_mi
  * Strategy: try each model ONCE first, then loop back for an extra retry on overloaded ones.
  * This way we quickly fall through to a working model instead of waiting on the same broken one.
  */
+/** Какая модель на самом деле ответила и была ли она основной. */
+export interface GeminiAnswer {
+  text: string;
+  model: string;
+  /** true, если основная модель была недоступна и отвечала запасная */
+  fallback: boolean;
+  /**
+   * Почему модель остановилась. STOP — договорила сама; MAX_TOKENS —
+   * ответ оборван на полуслове. Без этого признака обрыв неотличим от
+   * мусора: и то и другое приходит как «невалидный JSON».
+   */
+  finishReason?: string;
+}
+
+/** Основная модель. Ответ любой другой означает, что она была недоступна. */
+export const PRIMARY_MODEL = MODEL_PRIORITY[0];
+
+/**
+ * Совместимая обёртка: отдаёт только текст.
+ *
+ * Оставлена, потому что вызовов два с лишним десятка, и подмена модели
+ * важна не всем. Там, где результат сохраняется надолго и потом влияет
+ * на решение по человеку, зовите callGeminiWithModel и записывайте модель.
+ */
 export async function callGemini(parts: Part[]): Promise<string> {
+  return (await callGeminiWithModel(parts)).text;
+}
+
+export async function callGeminiWithModel(parts: Part[]): Promise<GeminiAnswer> {
   const errors: string[] = [];
   const overloaded: string[] = []; // models worth retrying after the round-robin
   let rateLimitWait = 0; // longest required per-minute wait, used as global backoff
@@ -72,10 +105,15 @@ export async function callGemini(parts: Part[]): Promise<string> {
       if (finishReason && finishReason !== "STOP" && finishReason !== "FINISH_REASON_UNSPECIFIED") {
         console.warn(`[gemini] ${modelName} finishReason=${finishReason} — ответ может быть обрезан`);
       }
-      if (modelName !== MODEL_PRIORITY[0]) {
+      if (modelName !== PRIMARY_MODEL) {
         console.log(`[gemini] Used fallback model: ${modelName}`);
       }
-      return result.response.text();
+      return {
+        text: result.response.text(),
+        model: modelName,
+        fallback: modelName !== PRIMARY_MODEL,
+        finishReason,
+      };
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       const kind = classifyError(error);
@@ -111,7 +149,14 @@ export async function callGemini(parts: Part[]): Promise<string> {
           console.warn(`[gemini] ${modelName} (retry) finishReason=${finishReason}`);
         }
         console.log(`[gemini] Retry succeeded with: ${modelName}`);
-        return result.response.text();
+        return {
+          text: result.response.text(),
+          model: modelName,
+          // Со второго захода даже основная модель означает, что первый
+          // раз она не ответила — результат стоит перепроверить
+          fallback: true,
+          finishReason,
+        };
       } catch (error) {
         const msg = error instanceof Error ? error.message : String(error);
         errors.push(`${modelName} (retry): ${msg.slice(0, 100)}`);

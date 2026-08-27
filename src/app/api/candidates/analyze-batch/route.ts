@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { analyzeImportedCandidate } from "@/server/services/candidate-analysis";
 
-export const maxDuration = 300;
+export const maxDuration = 500;
 
 const ALLOWED_LIMITS = [10, 20, 50, 100];
-const CONCURRENCY = 3;
+const CONCURRENCY = 1; // по одному: кейсы анализируются целиком (~150 кадров), параллель упирается в токен-лимиты
 
 export async function POST(req: NextRequest) {
   try {
@@ -33,7 +33,7 @@ export async function POST(req: NextRequest) {
     });
 
     // Fire-and-forget: обрабатываем пачками по CONCURRENCY.
-    // Рассчитано на долгоживущий Node-процесс (обычный сервер, не serverless).
+    // Рассчитано на долгоживущий Node-процесс (VPS/Railway).
     // Известное ограничение: строки не «застолбляются» атомарно перед обработкой.
     // Повторный вызов до завершения пачки (или ретрай отдельного кандидата из
     // той же пачки) может обработать кандидата дважды — лишний AI-расход, но не

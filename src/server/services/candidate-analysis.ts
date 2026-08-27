@@ -98,8 +98,8 @@ export async function analyzeImportedCandidate(candidateId: string): Promise<voi
         const ctx = { name: candidate.name, role: data.role, grade: data.grade };
         analysis =
           classification.direction === "communication"
-            ? await analyzePortfolioComm(scrape.text, scrape.screenshots, ctx)
-            : await analyzePortfolio(scrape.text, scrape.screenshots, ctx);
+            ? await analyzePortfolioComm(scrape.text, scrape.screenshots, ctx, scrape.screenshotMeta)
+            : await analyzePortfolio(scrape.text, scrape.screenshots, ctx, scrape.screenshotMeta, candidateId, scrape.pageImages);
       } catch (err) {
         // Портфолио-анализ — best-effort стадия. parseResume уже оплачен и дал
         // role/grade — не теряем это из-за транзиентного сбоя классификации/анализа.

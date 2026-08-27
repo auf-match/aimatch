@@ -1,3 +1,4 @@
+import { savePageImages, saveInterfaceShots } from "@/server/services/interface-shots";
 import { NextRequest, NextResponse } from "next/server";
 import { writeFile, mkdir, unlink } from "fs/promises";
 import path from "path";
@@ -23,8 +24,9 @@ import {
   buildCandidateEmbeddingText,
   EMBEDDING_MODEL,
 } from "@/server/services/embeddings";
+import type { ScreenshotMeta } from "@/lib/screenshot-select";
 
-export const maxDuration = 180; // scraping + resume parse + portfolio analysis
+export const maxDuration = 500; // scraping + resume parse + portfolio analysis (кейсы целиком)
 
 const uploadDir = process.env.UPLOAD_DIR || "./uploads";
 
@@ -47,6 +49,11 @@ export async function POST(req: NextRequest) {
     let fileType: "pdf" | "docx" = "pdf";
     let buffer: Buffer | undefined;
     let portfolioScreenshots: Buffer[] | undefined;
+    let portfolioScreenshotMeta: ScreenshotMeta[] | undefined;
+    // Картинки со страниц портфолио — их и покажем в карточке
+    let portfolioPageImages:
+      | { buffer: Buffer; caseTitle?: string }[]
+      | undefined;
 
     // Обработка файла (если есть)
     if (file) {
@@ -92,6 +99,8 @@ export async function POST(req: NextRequest) {
         // Сохранить скриншоты для отправки в AI
         if (scrapeResult.screenshots.length > 0) {
           portfolioScreenshots = scrapeResult.screenshots;
+          portfolioScreenshotMeta = scrapeResult.screenshotMeta;
+          portfolioPageImages = scrapeResult.pageImages;
         }
 
         console.log(
@@ -194,12 +203,12 @@ export async function POST(req: NextRequest) {
         const analysisCtx = { name: candidateData.name, role: candidateData.role, grade: candidateData.grade };
 
         if (resolvedDirection === "communication") {
-          portfolioAnalysis = await analyzePortfolioComm(text, portfolioScreenshots, analysisCtx);
+          portfolioAnalysis = await analyzePortfolioComm(text, portfolioScreenshots, analysisCtx, portfolioScreenshotMeta);
           console.log(
             `[upload] Comm-анализ готов: visualCraft=${(portfolioAnalysis.scores as { visualCraft: number | null }).visualCraft}`,
           );
         } else {
-          portfolioAnalysis = await analyzePortfolio(text, portfolioScreenshots, analysisCtx);
+          portfolioAnalysis = await analyzePortfolio(text, portfolioScreenshots, analysisCtx, portfolioScreenshotMeta);
           const ps = portfolioAnalysis.scores as { visualStrength: number | null; uxStrength: number | null; productMaturity: number | null };
           console.log(
             `[upload] Product-анализ готов: visual=${ps.visualStrength}, ux=${ps.uxStrength}, product=${ps.productMaturity}`,
@@ -309,6 +318,34 @@ export async function POST(req: NextRequest) {
       },
       include: { experiences: true },
     });
+
+    // Экраны интерфейсов раскладываем здесь: на момент разбора кандидата
+    // ещё не существовало, а путь к файлам строится по его id.
+    const кадрыИнтерфейса =
+      portfolioAnalysis && "interfaceIndexes" in portfolioAnalysis
+        ? portfolioAnalysis.interfaceIndexes
+        : undefined;
+    if (portfolioPageImages?.length || (кадрыИнтерфейса?.length && portfolioScreenshots?.length)) {
+      const shots = portfolioPageImages?.length
+        ? savePageImages(candidate.id, portfolioPageImages)
+        : saveInterfaceShots(
+            candidate.id,
+            portfolioScreenshots!,
+            portfolioScreenshotMeta,
+            кадрыИнтерфейса!,
+          );
+      if (shots.length > 0) {
+        await prisma.candidate.update({
+          where: { id: candidate.id },
+          data: {
+            portfolioAnalysis: {
+              ...(portfolioAnalysis as object),
+              interfaceShots: shots,
+            } as never,
+          },
+        });
+      }
+    }
 
     // ── Семантический эмбеддинг (best-effort) ──────────────────────
     // Не валим upload если не удалось — backfill-скрипт догенерирует позже.

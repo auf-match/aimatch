@@ -1,3 +1,4 @@
+import type { ScreenshotMeta } from "@/lib/screenshot-select";
 /**
  * Скрейпер Figma-файлов для портфолио кандидатов.
  *
@@ -15,7 +16,13 @@
  */
 
 const FIGMA_API = "https://api.figma.com/v1";
-const MAX_IMAGES = 8;             // Figma рендерит ~10 за раз, берём с запасом
+const MAX_IMAGES = 8;
+// Кейс = верхнеуровневый фрейм, экраны кейса = его вложенные блоки.
+// Раньше всё приходило одной лентой без границ, и рубрика не могла
+// проверить главное — удержана ли визуальная система между экранами.
+const MAX_CASES = 5;              // столько же, сколько берём с веб-площадок
+const MAX_SCREENS_PER_CASE = 8;   // дальше рендер и скачивание не окупаются
+const MIN_CHILD_AREA = 40000;     // ~200×200: мельче — декор, а не экран             // Figma рендерит ~10 за раз, берём с запасом
 const MAX_DEPTH = 3;              // не лезем глубже 3 уровней
 const MAX_TEXT_LAYERS = 200;      // защита от файлов с тысячами текстовых слоёв
 const MAX_TEXT_CHARS = 20000;     // итоговый лимит длины текста
@@ -35,6 +42,8 @@ export class FigmaScraperError extends Error {
 interface FigmaRect {
   width: number;
   height: number;
+  x?: number;
+  y?: number;
 }
 
 interface FigmaNode {
@@ -129,11 +138,21 @@ async function figmaFetch<T>(path: string): Promise<T> {
 }
 
 // ── Обход дерева: собираем текст + список фреймов для рендера ────
+interface FigmaChild {
+  id: string;
+  name: string;
+  area: number;
+  y: number;
+  x: number;
+}
+
 interface CollectedFrame {
   id: string;
   name: string;
   page: string;
   area: number;
+  /** Прямые дети — это экраны внутри кейса */
+  children: FigmaChild[];
 }
 
 interface CollectedData {
@@ -169,11 +188,30 @@ function collectFromDocument(doc: FigmaNode): CollectedData {
       const area = box ? box.width * box.height : 0;
       if (area > 1000) {
         // фильтруем пиксельную мелочь
+        // Дети кейса — его экраны. Мелочь отсекаем: подписи, стрелки,
+        // декоративные плашки экранами не являются.
+        const children: FigmaChild[] = (frame.children ?? [])
+          .filter((c) => c.visible !== false && c.absoluteBoundingBox)
+          .map((c) => {
+            const b = c.absoluteBoundingBox!;
+            return {
+              id: c.id,
+              name: c.name,
+              area: b.width * b.height,
+              y: b.y ?? 0,
+              x: b.x ?? 0,
+            };
+          })
+          .filter((c) => c.area >= MIN_CHILD_AREA)
+          // Порядок чтения: сверху вниз, при равной высоте — слева направо
+          .sort((a, b) => a.y - b.y || a.x - b.x);
+
         frames.push({
           id: frame.id,
           name: frame.name,
           page: page.name,
           area,
+          children,
         });
       }
     }
@@ -267,6 +305,13 @@ export interface FigmaScrapeResult {
   title: string;
   url: string;
   screenshots: Buffer[];
+  /** Метаданные кадров (параллельно screenshots) — для подписей в промпте. */
+  screenshotMeta: ScreenshotMeta[];
+  /**
+   * У Figma отдельного сбора картинок нет: рендеры узлов и так приходят
+   * готовыми файлами, а не снимками экрана. Поле есть ради единого типа.
+   */
+  pageImages: { buffer: Buffer; caseTitle?: string; width: number; height: number }[];
 }
 
 export async function scrapeFigma(url: string): Promise<FigmaScrapeResult> {
@@ -287,8 +332,8 @@ export async function scrapeFigma(url: string): Promise<FigmaScrapeResult> {
     `[figma] ${collected.pageNames.length} страниц, ${collected.texts.length} текстовых слоёв, ${collected.frames.length} фреймов`,
   );
 
-  // 2. Выбираем фреймы для рендера: самые крупные с разных страниц
-  // Группируем по странице, берём топ-3 с каждой, потом отсекаем по общему лимиту
+  // 2. Кейсы: самые крупные верхнеуровневые фреймы, не больше двух со
+  // страницы — иначе одна страница «Архив» заняла бы весь лимит.
   const byPage = new Map<string, CollectedFrame[]>();
   for (const f of collected.frames) {
     const arr = byPage.get(f.page) ?? [];
@@ -296,34 +341,77 @@ export async function scrapeFigma(url: string): Promise<FigmaScrapeResult> {
     byPage.set(f.page, arr);
   }
 
-  const selected: CollectedFrame[] = [];
+  const candidates: CollectedFrame[] = [];
   for (const [, frames] of byPage) {
     frames.sort((a, b) => b.area - a.area);
-    selected.push(...frames.slice(0, 2));
+    candidates.push(...frames.slice(0, 2));
   }
-  selected.sort((a, b) => b.area - a.area);
-  const toRender = selected.slice(0, MAX_IMAGES);
+  candidates.sort((a, b) => b.area - a.area);
+  const toRender = candidates.slice(0, MAX_CASES);
 
-  // 3. Рендерим
+  // 3. Экраны каждого кейса — его вложенные блоки. Если крупных блоков
+  // внутри нет, рендерим сам фрейм: кейс из одного экрана лучше, чем
+  // пропущенный.
+  interface Shot {
+    id: string;
+    caseIndex: number;
+    caseTitle: string;
+    frame: number;
+    frameTotal: number;
+  }
+  const shots: Shot[] = [];
+  toRender.forEach((c, i) => {
+    const screens = c.children.slice(0, MAX_SCREENS_PER_CASE);
+    const ids = screens.length > 0 ? screens.map((s) => s.id) : [c.id];
+    ids.forEach((id, k) => {
+      shots.push({
+        id,
+        caseIndex: i + 1,
+        caseTitle: c.name,
+        frame: k + 1,
+        frameTotal: ids.length,
+      });
+    });
+  });
+
+  // 4. Рендерим и скачиваем. Порядок держим по shots: раньше картинки
+  // складывались в порядке ЗАВЕРШЕНИЯ загрузки, и подписи разъезжались
+  // с изображениями — модель читала чужой заголовок над кадром.
   const imageUrls = await renderFrames(
     fileKey,
-    toRender.map((f) => f.id),
+    shots.map((s) => s.id),
   );
 
-  // 4. Скачиваем картинки параллельно
-  const screenshots: Buffer[] = [];
-  await Promise.all(
-    toRender.map(async (frame) => {
-      const imgUrl = imageUrls.get(frame.id);
-      if (!imgUrl) return;
+  const downloaded = await Promise.all(
+    shots.map(async (s) => {
+      const imgUrl = imageUrls.get(s.id);
+      if (!imgUrl) return null;
       try {
-        const buf = await downloadImage(imgUrl);
-        screenshots.push(buf);
+        return await downloadImage(imgUrl);
       } catch (e) {
-        console.warn(`[figma] не скачался фрейм ${frame.name}:`, (e as Error).message);
+        console.warn(
+          `[figma] не скачался узел «${s.caseTitle}»:`,
+          (e as Error).message,
+        );
+        return null;
       }
     }),
   );
+
+  const screenshots: Buffer[] = [];
+  const screenshotMeta: ScreenshotMeta[] = [];
+  shots.forEach((s, i) => {
+    const buf = downloaded[i];
+    if (!buf) return;
+    screenshots.push(buf);
+    screenshotMeta.push({
+      source: "case",
+      caseIndex: s.caseIndex,
+      caseTitle: s.caseTitle,
+      frame: s.frame,
+      frameTotal: s.frameTotal,
+    });
+  });
 
   // 5. Текст: название файла + страницы + контент текстовых слоёв
   const textParts: string[] = [];
@@ -354,10 +442,19 @@ export async function scrapeFigma(url: string): Promise<FigmaScrapeResult> {
     `[figma] ${url}: ${fullText.length} chars, ${screenshots.length} картинок`,
   );
 
+  // Рендеры Figma — это уже файлы работ, поэтому кладём их и как pageImages:
+  // в карточку кандидата пойдут они, а не снимки экрана.
   return {
     text: fullText,
     title: file.name,
     url,
     screenshots,
+    screenshotMeta,
+    pageImages: screenshots.map((buffer, i) => ({
+      buffer,
+      caseTitle: screenshotMeta[i]?.caseTitle,
+      width: 0,
+      height: 0,
+    })),
   };
 }
