@@ -12,7 +12,7 @@ import {
   type DesignDirection,
 } from "@/server/services/direction-classifier";
 
-export const maxDuration = 180; // scraping + vision analysis
+export const maxDuration = 500; // scraping + vision analysis (кейсы целиком)
 
 /**
  * POST /api/candidates/[id]/reanalyze-portfolio
@@ -120,7 +120,7 @@ export async function POST(
     );
 
     if (resolvedDirection === "communication") {
-      const analysis = await analyzePortfolioComm(scrapeResult.text, scrapeResult.screenshots, analysisCtx);
+      const analysis = await analyzePortfolioComm(scrapeResult.text, scrapeResult.screenshots, analysisCtx, scrapeResult.screenshotMeta);
 
       await prisma.candidate.update({
         where: { id },
@@ -133,7 +133,7 @@ export async function POST(
 
       return NextResponse.json({ success: true, analysis });
     } else {
-      const analysis = await analyzePortfolio(scrapeResult.text, scrapeResult.screenshots, analysisCtx);
+      const analysis = await analyzePortfolio(scrapeResult.text, scrapeResult.screenshots, analysisCtx, scrapeResult.screenshotMeta, id, scrapeResult.pageImages);
 
       await prisma.candidate.update({
         where: { id },

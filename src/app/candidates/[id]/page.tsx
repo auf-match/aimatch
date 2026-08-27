@@ -86,6 +86,7 @@ interface CandidateDetail {
   metricsImpact: number | null;
   researchDepth: number | null;
   portfolioAnalysis: PortfolioAnalysisData | null;
+  manualOverrides?: { visualLevel?: string; visualLevelBy?: string } | null;
 }
 
 interface PortfolioAnalysisData {
@@ -105,6 +106,10 @@ interface PortfolioAnalysisData {
   concerns: string[];
   screenshotsAnalyzed?: number;
   analyzedAt?: string;
+  model?: string;
+  modelFallback?: boolean;
+  visualLevel?: string;
+  interfaceShots?: { path: string; caption?: string }[];
 }
 
 interface EditDraft {
@@ -651,6 +656,7 @@ export default function CandidatePage({
               {/* Portfolio analysis */}
               {candidate.portfolioAnalysis && (
                 <PortfolioAnalysisCard
+                  manualLevel={candidate.manualOverrides?.visualLevel}
                   analysis={candidate.portfolioAnalysis}
                   candidateId={candidate.id}
                   hasPortfolioLink={candidate.portfolioLinks.length > 0}
@@ -1261,14 +1267,19 @@ function PortfolioAnalysisCard({
   analysis,
   candidateId,
   hasPortfolioLink,
+  manualLevel,
   onUpdated,
 }: {
   analysis: PortfolioAnalysisData;
   candidateId: string;
   hasPortfolioLink: boolean;
+  manualLevel?: string;
   onUpdated: () => void | Promise<void>;
 }) {
   const [openCase, setOpenCase] = useState<number | null>(null);
+  // Ручная ступень показывается сразу, не дожидаясь перезагрузки карточки
+  const [level, setLevel] = useState<string | undefined>(manualLevel);
+  const [savingLevel, setSavingLevel] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [reanalyzeError, setReanalyzeError] = useState<string | null>(null);
 
@@ -1338,9 +1349,62 @@ function PortfolioAnalysisCard({
         {reanalyzeError && <p className="mb-3 text-xs text-red-500">{reanalyzeError}</p>}
 
         <div className="space-y-3 mb-5">
-          {scoreEntries.map((s) => (
-            <ScoreBar key={s.key as string} label={s.label} value={s.value} explanation={s.explanation} />
-          ))}
+          {scoreEntries.map((s) =>
+            // Визуал ставит человек: машинная оценка не отличала сильных
+            // от слабых на семи портфолио. Вместо полосы — выбор ступени,
+            // расшифровка от модели остаётся подсказкой, куда смотреть.
+            s.key === "visualStrength" ? (
+              <div key="visualStrength" className="grid grid-cols-[130px_1fr] gap-3 items-start">
+                <span className="text-body pt-1.5">{s.label}</span>
+                <div>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <div className="inline-flex overflow-hidden rounded-lg border border-border">
+                      {(["сильный", "средний", "слабый"] as const).map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          disabled={savingLevel}
+                          onClick={async () => {
+                            const next = level === v ? null : v;
+                            setLevel(next ?? undefined);
+                            setSavingLevel(true);
+                            try {
+                              await fetch(`/api/candidates/${candidateId}/visual-level`, {
+                                method: "PATCH",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ level: next }),
+                              });
+                              await onUpdated();
+                            } finally {
+                              setSavingLevel(false);
+                            }
+                          }}
+                          className={`border-r border-border px-3 py-1 text-meta last:border-r-0 transition-colors ${
+                            level === v
+                              ? "bg-primary font-semibold text-primary-foreground"
+                              : "hover:bg-muted"
+                          }`}
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                    <span className="text-meta text-muted-foreground">
+                      {level ? "ваша оценка" : "не выставлено"}
+                      {analysis.visualLevel ? ` · модель: ${analysis.visualLevel}` : ""}
+                    </span>
+                  </div>
+                  {s.explanation && (
+                    <p className="mt-2 text-meta leading-relaxed text-muted-foreground">
+                      {s.explanation}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <ScoreBar key={s.key as string} label={s.label} value={s.value} explanation={s.explanation} />
+            ),
+          )}
         </div>
 
         {analysis.overallAssessment && (
@@ -1429,6 +1493,64 @@ function PortfolioAnalysisCard({
                 );
               })}
             </div>
+          </div>
+        )}
+
+        {/* Экраны интерфейсов. Оценку визуала модель не тянет — проверено
+            на семи портфолио, на двух моделях, со ступенями и эталонами.
+            А отобрать работы умеет: показываем их человеку целиком.
+
+            object-contain, а не cover: работа должна быть видна вся. При
+            обрезке в плитку попадала полоска шапки, и смысла в ней не было. */}
+        {analysis.interfaceShots && analysis.interfaceShots.length > 0 && (() => {
+          // Имена файлов между разборами одинаковые (01.jpg…08.jpg), а кеш
+          // живёт сутки — без метки браузер показывал бы прошлый анализ
+          const версияРазбора = encodeURIComponent(analysis.analyzedAt ?? "1");
+          return (
+          <div className="mb-5">
+            <div className="mb-2 flex items-baseline justify-between gap-3">
+              <p className="text-meta font-semibold text-muted-foreground">
+                Работы из портфолио
+              </p>
+              <span className="text-meta text-muted-foreground">
+                {analysis.interfaceShots.length} шт. · открываются в полный размер
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {analysis.interfaceShots.map((shot) => (
+                <a
+                  key={shot.path}
+                  href={`/api/portfolio-shots/${shot.path}?v=${версияРазбора}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="group grid aspect-[4/3] place-items-center overflow-hidden rounded-lg border border-border bg-muted/40 p-1 transition-colors hover:border-primary"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/api/portfolio-shots/${shot.path}?v=${версияРазбора}`}
+                    alt="Работа из портфолио"
+                    loading="lazy"
+                    className="max-h-full max-w-full object-contain transition-transform group-hover:scale-[1.03]"
+                  />
+                </a>
+              ))}
+            </div>
+          </div>
+          );
+        })()}
+
+        {/* Разбор мог уехать на запасную модель, если основная была
+            перегружена. Молчать об этом нельзя: оценки разных моделей
+            несопоставимы, а решение по кандидату принимается по ним. */}
+        {analysis.modelFallback && (
+          <div className="mt-4 flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 dark:border-amber-700/60 dark:bg-amber-950/20">
+            <span className="mt-[1px] text-[13px]" aria-hidden>⚠</span>
+            <p className="text-[12px] leading-relaxed text-amber-800 dark:text-amber-200">
+              Разбор сделан запасной моделью
+              {analysis.model ? ` (${analysis.model})` : ""}: основная была
+              перегружена. Оценки стоит перепроверить — сравнивать их с
+              другими кандидатами напрямую нельзя.
+            </p>
           </div>
         )}
 

@@ -2,10 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { analyzeImportedCandidate } from "@/server/services/candidate-analysis";
 
-export const maxDuration = 300;
+export const maxDuration = 500;
 
 const ALLOWED_LIMITS = [10, 20, 50, 100];
-const CONCURRENCY = 3;
+const CONCURRENCY = 1; // по одному — см. analyze-batch
 
 /**
  * POST /api/candidates/analyze-batch/retry-failed

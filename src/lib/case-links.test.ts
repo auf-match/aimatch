@@ -93,6 +93,67 @@ describe("selectCaseLinks", () => {
     expect(out).toHaveLength(2);
   });
 
+  // buildin.ai: на странице всего 8 внутренних ссылок, и служебные страницы
+  // площадки проезжали в отбор — «/product» дал 12 кадров рекламы сервиса,
+  // подписанных как кейс кандидата.
+  it("не берёт служебные страницы площадки за кейсы", () => {
+    const base = "https://buildin.ai/share/aa0872bf";
+    const links = [
+      mk("https://buildin.ai/", ""),
+      mk("https://buildin.ai/product", "Buildin.AI", true),
+      mk("https://buildin.ai/login", ""),
+      mk("https://buildin.ai/share/c75062c8-bb46-48ff-825a-34e1f90e26cb", ""),
+    ];
+    const out = selectCaseLinks(links, base, 5);
+    expect(out).toEqual([
+      "https://buildin.ai/share/c75062c8-bb46-48ff-825a-34e1f90e26cb",
+    ]);
+  });
+
+  it("корень сайта не может быть кейсом", () => {
+    const base = "https://jane.design/work/alpha";
+    const out = selectCaseLinks([mk("https://jane.design/", "На главную")], base, 5);
+    expect(out).toEqual([]);
+  });
+
+  // Встречается на buildin: href="https://buildin.ai" внутри относительной ссылки
+  it("отбрасывает битый href со схемой внутри пути", () => {
+    const base = "https://buildin.ai/share/aa0872bf";
+    const out = selectCaseLinks(
+      [mk("https://buildin.ai/https://buildin.ai", "Go to Buildin")],
+      base,
+      5,
+    );
+    expect(out).toEqual([]);
+  });
+
+  // dprofile: «/cases/recommended» — чужие рекомендованные работы, но слово
+  // «cases» в пути спасало страницу от отсева, и она ехала как кейс кандидата
+  it("агрегаты площадки не спасает слово «cases» в пути", () => {
+    const base = "https://dprofile.ru/foul_illarion";
+    const links = [
+      mk("https://dprofile.ru/cases/recommended", "Рекомендуемые"),
+      mk("https://dprofile.ru/foul_illarion/slices", "Фрагменты"),
+      mk("https://dprofile.ru/foul_illarion/followers", "82"),
+      mk("https://dprofile.ru/cases/basis-identity", "«BASIS» СММ Айдэнтика"),
+    ];
+    expect(selectCaseLinks(links, base, 5)).toEqual([
+      "https://dprofile.ru/cases/basis-identity",
+    ]);
+  });
+
+  it("отсекает разделы найма и поиска на площадке", () => {
+    const base = "https://www.behance.net/jane";
+    const links = [
+      mk("https://www.behance.net/hired", "How to Get Hired on Behance"),
+      mk("https://www.behance.net/search/projects", "Поиск"),
+      mk("https://www.behance.net/gallery/123/inserm", "INSERM | SaaS service"),
+    ];
+    expect(selectCaseLinks(links, base, 5)).toEqual([
+      "https://www.behance.net/gallery/123/inserm",
+    ]);
+  });
+
   it("пустой вход → пустой выход", () => {
     expect(selectCaseLinks([], "https://jane.design/", 5)).toEqual([]);
   });

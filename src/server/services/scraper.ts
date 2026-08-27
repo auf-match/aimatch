@@ -1,6 +1,8 @@
 import { chromium, type Browser } from "playwright";
 import { isFigmaUrl, scrapeFigma, FigmaScraperError } from "./figma-scraper";
 import { selectCaseLinks, type LinkCandidate } from "@/lib/case-links";
+import { thinCaseIndexes, type ScreenshotMeta } from "@/lib/screenshot-select";
+import { downloadImages, findPageImages } from "./portfolio-images";
 
 export class ScraperError extends Error {
   constructor(message: string) {
@@ -14,6 +16,20 @@ interface ScrapeResult {
   title: string;
   url: string;
   screenshots: Buffer[];
+  /**
+   * Метаданные кадров, параллельный массив к `screenshots` (одинаковая длина).
+   * Нужны, чтобы модель понимала структуру: какой экран из какого кейса.
+   * Без этого нельзя оценить, удержана ли визуальная система внутри продукта.
+   */
+  screenshotMeta: ScreenshotMeta[];
+  /**
+   * Картинки, взятые со страницы файлами, а не снимками экрана.
+   *
+   * Снимок области просмотра режет макет пополам и прихватывает текст
+   * описания — в карточку кандидата попадала половина интерфейса. Дизайнеры
+   * же кладут работы готовыми файлами, их можно взять целиком.
+   */
+  pageImages: { buffer: Buffer; caseTitle?: string; width: number; height: number }[];
 }
 
 let browserInstance: Browser | null = null;
@@ -79,10 +95,121 @@ async function waitForReady(
 }
 
 /** Высота страницы с защитой от null body (может быть null во время навигации). */
-async function safePageHeight(
+/**
+ * Ждёт, пока страница перестанет дорисовываться.
+ *
+ * Порог «текста больше N знаков» здесь не работает: у приложений-конструкторов
+ * каркас сам по себе даёт текст. buildin.ai проходил порог в 200 знаков на
+ * 1.8 секунде — но это были «Subscribe» и «Go to Buildin», а портфолио
+ * появлялось на четвёртой. Мы снимали оболочку и уходили.
+ *
+ * Поэтому ждём не объём, а СТАБИЛЬНОСТЬ: пока текст растёт, страница ещё
+ * дорисовывается. Два одинаковых замера подряд — можно снимать.
+ *
+ * Ошибки глушим: при клиентском редиректе контекст исполнения умирает,
+ * и ронять из-за этого весь скрейп нельзя.
+ */
+async function waitForContent(
   page: Awaited<ReturnType<Browser["newPage"]>>,
-): Promise<number> {
-  return page.evaluate(() => document.body?.scrollHeight ?? 0);
+  maxMs = 12000,
+): Promise<void> {
+  const started = Date.now();
+  let previous = -1;
+  let stable = 0;
+
+  while (Date.now() - started < maxMs) {
+    await page.waitForTimeout(600);
+    let length = 0;
+    try {
+      length = await page.evaluate(
+        () => document.body?.innerText?.trim().length ?? 0,
+      );
+    } catch {
+      continue; // контекст пересоздаётся после редиректа — пробуем снова
+    }
+
+    if (length > 0 && length === previous) {
+      stable++;
+      if (stable >= 2) return;
+    } else {
+      stable = 0;
+    }
+    previous = length;
+  }
+}
+
+/**
+ * Где на самом деле прокручивается страница.
+ *
+ * Раньше мерили document.body.scrollHeight и крутили window. На обычных
+ * сайтах это верно, но приложения-конструкторы (Notion, и почти наверняка
+ * не только он) рендерят содержимое внутри собственного контейнера с
+ * overflow: у body высота ровно с экран, окно не прокручивается вовсе.
+ *
+ * Из-за этого с каждой страницы Notion снимался ОДИН кадр вместо шести:
+ * body.scrollHeight = 900 при настоящих 4810 внутри .notion-scroller.
+ * Рубрика visualStrength оценивает удержание системы между экранами —
+ * по одному кадру этого не видно, но модель всё равно выносила оценку.
+ *
+ * Ищем контейнер, который прокручивается заметно и занимает почти весь
+ * экран: боковое меню под это условие не подходит.
+ */
+interface ScrollArea {
+  /** Полная высота прокручиваемого содержимого */
+  height: number;
+  /** Высота одного экрана — шаг прокрутки */
+  step: number;
+  /** Крутить внутренний контейнер, а не окно */
+  inner: boolean;
+}
+
+async function findScrollArea(
+  page: Awaited<ReturnType<Browser["newPage"]>>,
+): Promise<ScrollArea> {
+  return page.evaluate(() => {
+    const viewport = window.innerHeight || 900;
+    const windowHeight = document.body?.scrollHeight ?? 0;
+
+    // Окно прокручивается — обычный сайт, ничего искать не нужно
+    if (windowHeight > viewport + 100) {
+      return { height: windowHeight, step: viewport, inner: false };
+    }
+
+    let best: HTMLElement | null = null;
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>("div"))) {
+      if (el.scrollHeight <= el.clientHeight + 200) continue;
+      // Контейнер во весь экран, а не боковая колонка со своим скроллом
+      if (el.clientHeight < viewport * 0.6) continue;
+      if (!best || el.scrollHeight > best.scrollHeight) best = el;
+    }
+
+    if (best) {
+      (best as HTMLElement & { dataset: DOMStringMap }).dataset.scrapeScroller = "1";
+      return { height: best.scrollHeight, step: best.clientHeight, inner: true };
+    }
+    return { height: windowHeight, step: viewport, inner: false };
+  });
+}
+
+/** Прокручивает то, что нашла findScrollArea. */
+async function scrollAreaTo(
+  page: Awaited<ReturnType<Browser["newPage"]>>,
+  y: number,
+  inner: boolean,
+): Promise<void> {
+  await page.evaluate(
+    ({ y, inner }: { y: number; inner: boolean }) => {
+      if (inner) {
+        const el = document.querySelector<HTMLElement>("[data-scrape-scroller]");
+        if (el) {
+          el.scrollTop = y;
+          return;
+        }
+      }
+      window.scrollTo(0, y);
+    },
+    { y, inner },
+  );
 }
 
 function isNotionUrl(url: string): boolean {
@@ -135,7 +262,8 @@ async function extractPageText(page: Parameters<typeof chromium.launch>[0] exten
 async function scrapeNotion(
   page: Awaited<ReturnType<Browser["newPage"]>>,
   url: string,
-  screenshots: Buffer[]
+  screenshots: Buffer[],
+  metas: ScreenshotMeta[]
 ): Promise<{ text: string; title: string; candidates: LinkCandidate[] }> {
   // Navigate — use 'commit' (fires on first byte), then wait for content ourselves.
   // Таймаут срезан 60→30с: мёртвые notion.site (unpublished) висят, а живые
@@ -160,18 +288,18 @@ async function scrapeNotion(
   await waitForReady(page);
 
   // Notion lazy-loads blocks as you scroll — scroll through the whole page
-  const pageHeight: number = await safePageHeight(page);
-  const viewportHeight = 900;
-  const steps = Math.ceil(pageHeight / viewportHeight);
+  const area = await findScrollArea(page);
+  const steps = Math.max(1, Math.ceil(area.height / area.step));
 
   for (let i = 0; i < steps; i++) {
-    await page.evaluate((y: number) => window.scrollTo(0, y), i * viewportHeight);
+    await scrollAreaTo(page, i * area.step, area.inner);
     await page.waitForTimeout(600); // wait for lazy blocks to render
     screenshots.push(await page.screenshot({ type: "jpeg", quality: 75, fullPage: false }));
+    metas.push({ source: "main", frame: i + 1, frameTotal: steps });
   }
 
   // Scroll back to top so full content is in DOM
-  await page.evaluate(() => window.scrollTo(0, 0));
+  await scrollAreaTo(page, 0, area.inner);
   await page.waitForTimeout(500);
 
   // .catch — Notion может редиректнуть во время вызова ("context destroyed"),
@@ -215,27 +343,37 @@ async function scrapeNotion(
 async function scrapeRegular(
   page: Awaited<ReturnType<Browser["newPage"]>>,
   url: string,
-  screenshots: Buffer[]
+  screenshots: Buffer[],
+  metas: ScreenshotMeta[]
 ): Promise<{ text: string; title: string; candidates: LinkCandidate[] }> {
   // "commit" — faster than "networkidle"; avoids timeouts on JS-heavy sites like alla.studio
   await page.goto(url, { waitUntil: "commit", timeout: 60000 });
   // Ждём реальный body вместо фиксированной паузы (страница могла редиректнуть
   // или ещё не отрисоваться — иначе scrollHeight падал на null body).
   await waitForReady(page);
+
+  // Ждём появления содержимого, а не только каркаса. Раньше это ожидание было
+  // только у Notion, и на приложениях-конструкторах мы снимали оболочку:
+  // buildin.ai отдавал 375 знаков и заголовок «Buildin — Your AI Workspace»,
+  // потому что портфолио дорисовывается на четвёртой секунде.
+  //
+  // Ожидание с запасом, но не блокирующее: страница из одних картинок текста
+  // не наберёт, и ронять из-за этого весь скрейп нельзя.
+  await waitForContent(page);
   await page.waitForTimeout(500);
 
   // .catch — Notion может редиректнуть во время вызова ("context destroyed"),
   // тогда не роняем весь скрейп, а продолжаем с пустым заголовком.
   const title = await page.title().catch(() => "");
 
-  const pageHeight: number = await safePageHeight(page);
-  const viewportHeight = 900;
-  const steps = Math.ceil(pageHeight / viewportHeight);
+  const area = await findScrollArea(page);
+  const steps = Math.max(1, Math.ceil(area.height / area.step));
 
   for (let i = 0; i < steps; i++) {
-    await page.evaluate((y: number) => window.scrollTo(0, y), i * viewportHeight);
+    await scrollAreaTo(page, i * area.step, area.inner);
     await page.waitForTimeout(400);
     screenshots.push(await page.screenshot({ type: "jpeg", quality: 80, fullPage: false }));
+    metas.push({ source: "main", frame: i + 1, frameTotal: steps });
   }
 
   const text = await extractPageText(page);
@@ -342,13 +480,19 @@ async function scrapeOnce(url: string): Promise<ScrapeResult> {
 
   const page = await context.newPage();
   const screenshots: Buffer[] = [];
+  const screenshotMeta: ScreenshotMeta[] = [];
+  const pageImages: {
+    buffer: Buffer;
+    caseTitle?: string;
+    width: number;
+    height: number;
+  }[] = [];
   const notion = isNotionUrl(url);
-  const viewportHeight = 900;
 
   try {
     const { text, title, candidates } = notion
-      ? await scrapeNotion(page, url, screenshots)
-      : await scrapeRegular(page, url, screenshots);
+      ? await scrapeNotion(page, url, screenshots, screenshotMeta)
+      : await scrapeRegular(page, url, screenshots, screenshotMeta);
 
     // Страница так и не отрисовалась (антибот-заглушка, редирект, таймаут) —
     // бросаем, чтобы сработал ретрай; если и он пуст — честный ANALYSIS_FAILED,
@@ -363,8 +507,10 @@ async function scrapeOnce(url: string): Promise<ScrapeResult> {
     let caseStudyText = "";
     const caseLinks = selectCaseLinks(candidates, url, 5);
 
+    let caseNumber = 0;
     for (const caseUrl of caseLinks) {
       try {
+        caseNumber++;
         if (notion) {
           await page.goto(caseUrl, { waitUntil: "commit", timeout: 30000 });
           try {
@@ -381,15 +527,50 @@ async function scrapeOnce(url: string): Promise<ScrapeResult> {
         }
 
         await waitForReady(page);
+        // Та же болезнь, что и на главной: страница кейса дорисовывается
+        // не сразу, и без ожидания в подпись уходил заголовок оболочки
+        // («Buildin — Your AI Workspace»), а кадр снимался один.
+        await waitForContent(page, 10000);
+
+        // Заголовок кейса — уходит в подпись кадра для модели.
+        // Убираем хвост площадки: «Название :: Behance», «Название | Dribbble».
+        const caseTitle = (await page.title().catch(() => ""))
+          .replace(/\s*(::|[|–—-])\s*(Behance|Dribbble|Notion|Figma).*$/i, "")
+          .trim()
+          .slice(0, 80);
 
         // Scroll through the full case study page — this is where the real portfolio work is
-        const caseHeight: number = await safePageHeight(page);
-        const caseSteps = Math.ceil(caseHeight / viewportHeight);
+        const caseArea = await findScrollArea(page);
+        const caseSteps = Math.max(1, Math.ceil(caseArea.height / caseArea.step));
 
         for (let s = 0; s < caseSteps; s++) {
-          await page.evaluate((y: number) => window.scrollTo(0, y), s * viewportHeight);
+          await scrollAreaTo(page, s * caseArea.step, caseArea.inner);
           await page.waitForTimeout(notion ? 600 : 300);
           screenshots.push(await page.screenshot({ type: "jpeg", quality: 75, fullPage: false }));
+          screenshotMeta.push({
+            source: "case",
+            caseIndex: caseNumber,
+            caseTitle: caseTitle || undefined,
+            frame: s + 1,
+            frameTotal: caseSteps,
+          });
+        }
+
+        // Картинки страницы: они и есть работа, в отличие от снимков экрана.
+        // По четыре с кейса — больше в карточку всё равно не поместится.
+        try {
+          const found = await findPageImages(page);
+          const got = await downloadImages(page, found, 4);
+          for (const g of got) {
+            pageImages.push({
+              buffer: g.buffer,
+              caseTitle: caseTitle || undefined,
+              width: g.meta.width,
+              height: g.meta.height,
+            });
+          }
+        } catch {
+          // Не собрались — не беда, снимки экрана остаются запасным путём
         }
 
         const caseText = await extractPageText(page);
@@ -412,11 +593,38 @@ async function scrapeOnce(url: string): Promise<ScrapeResult> {
       .join("\n")
       .slice(0, 45000);
 
+    // Отсекаем «кейсы», оказавшиеся служебными страницами площадки:
+    // стоп-листом путей их не переловить, а по длине они отличаются кратно.
+    // Идём по позициям: кадры и метаданные — параллельные массивы.
+    const thin = thinCaseIndexes(screenshotMeta);
+    if (thin.size > 0) {
+      for (let i = screenshotMeta.length - 1; i >= 0; i--) {
+        const m = screenshotMeta[i];
+        if (m.source === "case" && thin.has(m.caseIndex ?? 0)) {
+          screenshotMeta.splice(i, 1);
+          screenshots.splice(i, 1);
+        }
+      }
+      // Нумеруем заново: пропуски сбили бы подписи для модели
+      const order = new Map<number, number>();
+      for (const m of screenshotMeta) {
+        if (m.source !== "case") continue;
+        const old = m.caseIndex ?? 0;
+        if (!order.has(old)) order.set(old, order.size + 1);
+        m.caseIndex = order.get(old);
+      }
+    }
+
+    const caseFrames = screenshotMeta.filter((m) => m.source === "case").length;
     console.log(
-      `[scraper] ${url}: ${fullText.length} chars, ${screenshots.length} screenshots, ${caseLinks.length} sub-pages`
+      `[scraper] ${url}: ${fullText.length} chars, ${screenshots.length} screenshots ` +
+        `(${caseFrames} из кейсов), ${caseLinks.length} sub-pages`
     );
 
-    return { text: fullText, title, url, screenshots };
+    console.log(
+      `[scraper] картинок со страниц: ${pageImages.length}`,
+    );
+    return { text: fullText, title, url, screenshots, screenshotMeta, pageImages };
   } finally {
     await context.close();
   }

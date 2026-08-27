@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { analyzeImportedCandidate } from "@/server/services/candidate-analysis";
 
-export const maxDuration = 300;
+export const maxDuration = 500;
 
 export async function POST(
   _req: NextRequest,
@@ -20,7 +20,7 @@ export async function POST(
     // Вернуть в очередь, чтобы UI сразу показал «в работе»
     await prisma.candidate.update({ where: { id }, data: { status: "NEW" } });
 
-    // Fire-and-forget: рассчитано на долгоживущий Node-процесс (обычный сервер, не serverless),
+    // Fire-and-forget: рассчитано на долгоживущий Node-процесс (VPS/Railway),
     // как и в analyze-batch — короткоживущий serverless здесь не переживёт запрос.
     void analyzeImportedCandidate(id).catch((err) =>
       console.error("analyze-import background threw:", err),
