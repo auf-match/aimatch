@@ -62,3 +62,34 @@ describe("normalizeIngestRow", () => {
     expect(row?.linkedinUrl).toBe("https://li/a");
   });
 });
+
+describe("normalizeIngestRow — внешний идентификатор", () => {
+  const DEF = "Консультант";
+
+  it("принимает externalId и в camelCase, и в snake_case", () => {
+    const a = normalizeIngestRow(
+      { name: "Иван Петров", portfolioUrl: "https://behance.net/ivan", externalId: "87908546" },
+      DEF,
+    );
+    const b = normalizeIngestRow(
+      { name: "Иван Петров", portfolioUrl: "https://behance.net/ivan", external_id: "87908546" },
+      DEF,
+    );
+    expect(a?.externalId).toBe("87908546");
+    expect(b?.externalId).toBe("87908546");
+  });
+
+  it("без externalId строка собирается как прежде", () => {
+    const row = normalizeIngestRow(
+      { name: "Иван Петров", portfolioUrl: "https://behance.net/ivan" },
+      DEF,
+    );
+    expect(row).not.toBeNull();
+    expect(row?.externalId).toBeUndefined();
+  });
+
+  it("externalId не заменяет обязательных полей", () => {
+    const row = normalizeIngestRow({ name: "Без ссылки", externalId: "42" }, DEF);
+    expect(row).toBeNull();
+  });
+});

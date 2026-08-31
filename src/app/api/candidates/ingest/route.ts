@@ -18,7 +18,13 @@ const DEFAULT_SOURCE = "Консультант";
  *   IngestInput: { name, portfolioLinks|portfolioUrl|url, email?, telegram?, linkedin?, location?, source? }
  *
  * Кандидаты заводятся со статусом NEW → дальше идут в обычный анализ портфолио.
- * Дедуп по каноническому URL — внутри запроса и против базы.
+ *
+ * Дедуп двухступенчатый — внутри запроса и против базы:
+ *   1) по паре «источник + externalId», если он передан. Нужен для регулярных
+ *      выгрузок (Хантфлоу и т.п.): у человека может не быть ссылки на портфолио
+ *      или она может отличаться от той, что уже лежит в базе, и тогда сравнение
+ *      по ссылке заводит второго такого же.
+ *   2) по каноническому URL — как раньше, для всех, у кого externalId нет.
  */
 export async function POST(req: NextRequest) {
   const expected = process.env.INGEST_TOKEN;
@@ -61,22 +67,40 @@ export async function POST(req: NextRequest) {
       else skippedInvalid++;
     }
 
-    // Дедуп внутри запроса по каноническому ключу первой ссылки.
-    const seen = new Set<string>();
+    // Ключ по источнику: разные источники могут нумеровать людей одинаково.
+    const externalKey = (source: string, externalId: string) => `${source}\u0000${externalId}`;
+
+    // Дедуп внутри запроса: сперва по внешнему id, затем по ссылке.
+    const seenExternal = new Set<string>();
+    const seenLinks = new Set<string>();
     const unique: IngestRow[] = [];
     for (const row of rows) {
+      if (row.externalId) {
+        const key = externalKey(row.source, row.externalId);
+        if (seenExternal.has(key)) continue;
+        seenExternal.add(key);
+      }
       const key = dedupKey(row.portfolioLinks[0]);
-      if (seen.has(key)) continue;
-      seen.add(key);
+      if (seenLinks.has(key)) continue;
+      seenLinks.add(key);
       unique.push(row);
     }
 
-    // Дедуп против базы (формы URL в базе разные — сравниваем по канон-ключу).
-    const existing = await prisma.candidate.findMany({ select: { portfolioLinks: true } });
+    // Дедуп против базы: формы URL в базе разные — сравниваем по канон-ключу.
+    const existing = await prisma.candidate.findMany({
+      select: { portfolioLinks: true, source: true, externalId: true },
+    });
     const existingKeys = new Set<string>();
-    for (const c of existing) for (const link of c.portfolioLinks) existingKeys.add(dedupKey(link));
+    const existingExternal = new Set<string>();
+    for (const c of existing) {
+      for (const link of c.portfolioLinks) existingKeys.add(dedupKey(link));
+      if (c.source && c.externalId) existingExternal.add(externalKey(c.source, c.externalId));
+    }
 
-    const toCreate = unique.filter((r) => !existingKeys.has(dedupKey(r.portfolioLinks[0])));
+    const toCreate = unique.filter((r) => {
+      if (r.externalId && existingExternal.has(externalKey(r.source, r.externalId))) return false;
+      return !existingKeys.has(dedupKey(r.portfolioLinks[0]));
+    });
     const skippedExisting = unique.length - toCreate.length;
 
     if (toCreate.length > 0) {

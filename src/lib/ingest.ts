@@ -17,6 +17,9 @@ export interface IngestInput {
   linkedinUrl?: unknown;
   location?: unknown;
   source?: unknown;
+  /** Идентификатор человека в системе-источнике: номер в Хантфлоу и т.п. */
+  externalId?: unknown;
+  external_id?: unknown;
 }
 
 /** Готовая строка для prisma.candidate.createMany. */
@@ -27,6 +30,7 @@ export interface IngestRow {
   telegramContact?: string;
   linkedinUrl?: string;
   location?: string;
+  externalId?: string;
   role: "OTHER";
   grade: "MIDDLE";
   status: "NEW";
@@ -65,6 +69,7 @@ export function normalizeIngestRow(
   const linkedinUrl = str(input.linkedinUrl) || str(input.linkedin) || undefined;
   const location = str(input.location) || undefined;
   const source = str(input.source) || defaultSource;
+  const externalId = str(input.externalId) || str(input.external_id) || undefined;
 
   return {
     name,
@@ -73,6 +78,7 @@ export function normalizeIngestRow(
     ...(telegramContact ? { telegramContact } : {}),
     ...(linkedinUrl ? { linkedinUrl } : {}),
     ...(location ? { location } : {}),
+    ...(externalId ? { externalId } : {}),
     role: "OTHER",
     grade: "MIDDLE",
     status: "NEW",
