@@ -36,6 +36,19 @@ RUN npx playwright install --with-deps chromium
 ARG DATABASE_URL=postgresql://build:build@localhost:5432/build
 
 # Прод-сборка Next.js.
+#
+# DATABASE_URL нужен уже на сборке: next build исполняет серверный код
+# страниц, тот поднимает PrismaClient, а Prisma без строки подключения
+# падает. Railway прокидывал переменные окружения в сборку сам, чистый
+# `docker build` — нет, поэтому вне Railway сборка ломалась.
+#
+# Адрес заведомо нерабочий и нужен только чтобы Prisma собралась: ничего
+# по нему не запрашивается, миграции идут на старте контейнера.
+#
+# ARG, а не ENV: стадия здесь одна, и ENV остался бы в готовом образе.
+# Тогда контейнер, запущенный без настоящего DATABASE_URL, не упал бы с
+# понятной ошибкой, а молча пошёл в localhost. ARG живёт только на сборке.
+ARG DATABASE_URL=postgresql://build:build@localhost:5432/build
 RUN npm run build
 
 EXPOSE 3000
