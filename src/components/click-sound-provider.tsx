@@ -17,6 +17,8 @@
  * каждый клик — новый дешёвый источник поверх общего буфера.
  */
 import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
+import { isChromelessRoute } from "@/lib/public-routes";
 import {
   resolveClickSound,
   CLICK_TARGET_SELECTOR,
@@ -118,7 +120,20 @@ export function ClickSoundProvider({
   const opts = useRef({ enabled, volume, rate, maxMs });
   opts.current = { enabled, volume, rate, maxMs };
 
+  /**
+   * На публичных страницах звука нет.
+   *
+   * Дело не только в уместности. Файл /click.mp3 лежит за паролем, и на
+   * открытой странице запрос к нему возвращал 401. Браузер, увидев отказ
+   * с требованием авторизации на ЛЮБОМ подзапросе, показывает окно ввода
+   * пароля — и публичная страница выглядела запароленной, хотя сама
+   * отдавалась нормально. Найти это по коду ответа страницы нельзя:
+   * она отвечает 200.
+   */
+  const публичная = isChromelessRoute(usePathname() || "/");
+
   useEffect(() => {
+    if (публичная) return;
     const player = new ClickSoundPlayer(src);
     void player.preload();
     let lastProceduralAt = 0;
@@ -161,7 +176,7 @@ export function ClickSoundProvider({
       document.removeEventListener("pointerdown", onPointerDown, true);
       player.dispose();
     };
-  }, [src]);
+  }, [src, публичная]);
 
   return null;
 }
