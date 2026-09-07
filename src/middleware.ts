@@ -13,13 +13,32 @@
  */
 import { NextResponse, type NextRequest } from "next/server";
 import { isPublicRoute } from "@/lib/public-routes";
+import { isPublicHost, решитьПоПути } from "@/lib/public-host";
 
 export function middleware(req: NextRequest) {
+  const путь = req.nextUrl.pathname;
+
+  // Публичный домен (razbor.pragmatica.design) — своя развилка целиком.
+  // На нём приложение показывает ровно одну страницу, а внутреннего
+  // продукта нет вовсе: не «закрыт паролем», а не существует. Иначе по
+  // адресу, который мы раздаём дизайнерам, находился бы вход во
+  // внутренний инструмент агентства
+  if (isPublicHost(req.headers.get("host"))) {
+    const решение = решитьПоПути(путь);
+    if (решение.вид === "страница") {
+      const url = req.nextUrl.clone();
+      url.pathname = "/p/portfolio";
+      return NextResponse.rewrite(url);
+    }
+    if (решение.вид === "пропустить") return NextResponse.next();
+    return new NextResponse("Not found", { status: 404 });
+  }
+
   // Публичные адреса — до всех проверок. Список один на всё приложение и
   // лежит в @/lib/public-routes под тестами: разъехавшиеся копии такого
   // списка означали бы либо запароленную публичную страницу, либо
   // открытый наружу продукт
-  if (isPublicRoute(req.nextUrl.pathname)) return NextResponse.next();
+  if (isPublicRoute(путь)) return NextResponse.next();
 
   const user = process.env.BASIC_AUTH_USER;
   const pass = process.env.BASIC_AUTH_PASS;
