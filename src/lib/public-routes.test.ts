@@ -61,6 +61,23 @@ describe("isChromelessRoute", () => {
     expect(isPublicRoute("/prototype/public-portfolio")).toBe(false);
   });
 
+  it("открывает приём заявок — форме нечем авторизоваться", () => {
+    expect(isPublicRoute("/api/public/portfolio")).toBe(true);
+  });
+
+  it("остальное api держит под паролем", () => {
+    // Промах здесь означал бы открытую наружу базу кандидатов
+    for (const path of [
+      "/api/candidates",
+      "/api/candidates/123",
+      "/api/vacancies",
+      "/api/publications", // похоже на public, но им не является
+      "/api/candidates/public",
+    ]) {
+      expect(isPublicRoute(path), path).toBe(false);
+    }
+  });
+
   it("оставляет сайдбар на остальных страницах", () => {
     for (const path of ["/", "/candidates", "/vacancies", "/prototype/dashboard"]) {
       expect(isChromelessRoute(path), path).toBe(false);

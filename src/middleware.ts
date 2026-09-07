@@ -12,8 +12,15 @@
  * Пароль — длинный, сгенерируйте через `openssl rand -base64 24` или 1Password.
  */
 import { NextResponse, type NextRequest } from "next/server";
+import { isPublicRoute } from "@/lib/public-routes";
 
 export function middleware(req: NextRequest) {
+  // Публичные адреса — до всех проверок. Список один на всё приложение и
+  // лежит в @/lib/public-routes под тестами: разъехавшиеся копии такого
+  // списка означали бы либо запароленную публичную страницу, либо
+  // открытый наружу продукт
+  if (isPublicRoute(req.nextUrl.pathname)) return NextResponse.next();
+
   const user = process.env.BASIC_AUTH_USER;
   const pass = process.env.BASIC_AUTH_PASS;
   const isProd = process.env.NODE_ENV === "production";
