@@ -270,11 +270,13 @@ function FormScreen({ onSubmit }: { onSubmit: (id: string) => void }) {
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
   const [link, setLink] = useState("");
+  const [согласие, setСогласие] = useState(false);
   const [шлём, setШлём] = useState(false);
   const [ошибка, setОшибка] = useState<string | null>(null);
   // Поле-приманка: людям не видно, боты заполняют
   const [website, setWebsite] = useState("");
-  const ready = Boolean(name.trim() && contact.trim() && link.trim()) && !шлём;
+  const ready =
+    Boolean(name.trim() && contact.trim() && link.trim()) && согласие && !шлём;
 
   async function отправить() {
     setШлём(true);
@@ -283,7 +285,13 @@ function FormScreen({ onSubmit }: { onSubmit: (id: string) => void }) {
       const res = await fetch("/api/public/portfolio", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, contact, portfolio: link, website }),
+        body: JSON.stringify({
+          name,
+          contact,
+          portfolio: link,
+          consent: согласие,
+          website,
+        }),
       });
       const данные = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -348,6 +356,20 @@ function FormScreen({ onSubmit }: { onSubmit: (id: string) => void }) {
           onChange={(e) => setWebsite(e.target.value)}
         />
 
+        {/* Согласие — обычная галочка, а не текст «нажимая, вы соглашаетесь»:
+            согласие должно быть действием, а не побочным следствием отправки */}
+        <label className="consent">
+          <input
+            type="checkbox"
+            checked={согласие}
+            onChange={(e) => setСогласие(e.target.checked)}
+          />
+          <span>
+            Согласен на обработку персональных данных: имя, контакт и ссылка на
+            портфолио попадут в базу кандидатов агентства АУФ
+          </span>
+        </label>
+
         <button className="action" disabled={!ready} onClick={отправить}>
           {шлём ? "Отправляем…" : "Разобрать портфолио"}
         </button>
@@ -355,10 +377,9 @@ function FormScreen({ onSubmit }: { onSubmit: (id: string) => void }) {
         {ошибка && <p className="ошибка">{ошибка}</p>}
       </Card>
 
-      <p className="fineprint">
-        Портфолио и контакт попадут в базу кандидатов агентства АУФ. Напишем,
-        если под тебя появится вакансия.
-      </p>
+      {/* Куда попадут данные, теперь сказано в самой галочке — здесь
+          осталось только то, чего там нет */}
+      <p className="fineprint">Напишем, если под тебя появится вакансия.</p>
     </>
   );
 }
@@ -881,6 +902,26 @@ export default function PublicPortfolio({
           opacity: 0;
         }
         .ошибка { margin-top: 12px; color: #d2321a; }
+
+        /* Согласие. Галочка крупная — 24: по гайдлайнам мелкие цели
+           пальцем не берутся, а промах здесь означает, что человек не
+           поймёт, почему кнопка не работает */
+        .consent {
+          display: flex;
+          align-items: flex-start;
+          gap: 12px;
+          margin-top: 24px;
+          cursor: pointer;
+          color: var(--ink-2);
+        }
+        .consent input {
+          width: 24px;
+          height: 24px;
+          margin: 0;
+          flex-shrink: 0;
+          accent-color: var(--accent);
+          cursor: pointer;
+        }
 
         /* Запасная ссылка на разбор: действие второстепенное, поэтому
            контурная кнопка, а не залитая оранжевым — она не должна
