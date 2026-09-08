@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { normalizeSubmission, normalizeLink, PUBLIC_SOURCE } from "./public-intake";
+import { normalizeSubmission, normalizeLink, PUBLIC_SOURCE, CONSENT_TEXT } from "./public-intake";
 
-const годная = { name: "Дмитрий Евтеев", contact: "@evteev", portfolio: "behance.net/evteev" };
+const годная = {
+  name: "Дмитрий Евтеев",
+  contact: "@evteev",
+  portfolio: "behance.net/evteev",
+  consent: true,
+};
 
 describe("normalizeLink", () => {
   it("дописывает протокол: люди пишут адрес без него", () => {
@@ -56,6 +61,25 @@ describe("normalizeSubmission", () => {
     expect(r.ok && r.row.email).toBeUndefined();
   });
 
+  it("без галочки согласия не пропускает", () => {
+    // Проверка обязана быть на сервере: в браузере галочку можно обойти,
+    // отправив запрос мимо формы
+    expect(normalizeSubmission({ ...годная, consent: false })).toMatchObject({ поле: "consent" });
+    expect(normalizeSubmission({ ...годная, consent: undefined })).toMatchObject({ поле: "consent" });
+    // Строка «true» — не согласие: принимаем только настоящее true
+    expect(normalizeSubmission({ ...годная, consent: "true" })).toMatchObject({ поле: "consent" });
+  });
+
+  it("запоминает, когда и под каким текстом дано согласие", () => {
+    const r = normalizeSubmission(годная);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const с = r.row.manualOverrides.публичноеСогласие;
+    expect(с.текст).toBe(CONSENT_TEXT);
+    // Согласие без даты недоказуемо
+    expect(Number.isNaN(Date.parse(с.дано))).toBe(false);
+  });
+
   it("заполненная приманка — тихий отказ, без разбора полей", () => {
     const r = normalizeSubmission({ ...годная, website: "http://spam" });
     expect(r).toEqual({ ok: false, бот: true });
@@ -83,7 +107,12 @@ describe("normalizeSubmission", () => {
   });
 
   it("пробелы по краям срезает", () => {
-    const r = normalizeSubmission({ name: "  Лена  ", contact: " @lena ", portfolio: " a.ru " });
+    const r = normalizeSubmission({
+      name: "  Лена  ",
+      contact: " @lena ",
+      portfolio: " a.ru ",
+      consent: true,
+    });
     expect(r.ok && r.row.name).toBe("Лена");
     expect(r.ok && r.row.telegramContact).toBe("@lena");
   });

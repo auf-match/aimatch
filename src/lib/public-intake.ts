@@ -20,10 +20,17 @@ const MAX_NAME = 120;
 const MAX_CONTACT = 200;
 const MAX_LINK = 500;
 
+/** Под чем именно человек ставит галочку. Хранится вместе с согласием. */
+export const CONSENT_TEXT =
+  "Согласен на обработку персональных данных: имя, контакт и ссылка на " +
+  "портфолио попадут в базу кандидатов агентства АУФ.";
+
 export interface PublicSubmission {
   name?: unknown;
   contact?: unknown;
   portfolio?: unknown;
+  /** Галочка согласия на обработку данных */
+  consent?: unknown;
   /** Поле-приманка: людям не видно, боты заполняют */
   website?: unknown;
 }
@@ -37,13 +44,27 @@ export interface IntakeRow {
   grade: "MIDDLE";
   status: "NEW";
   source: string;
+  /**
+   * Отметка о согласии: когда дано и под каким текстом.
+   *
+   * Лежит в manualOverrides, потому что отдельного поля в таблице нет, а
+   * заводить его — миграция боевой базы. Согласие, которого не доказать,
+   * бесполезно, поэтому храним хотя бы так; понадобится строгий учёт —
+   * вынесем в свою колонку.
+   */
+  manualOverrides: { публичноеСогласие: { дано: string; текст: string } };
 }
 
 export type IntakeResult =
   | { ok: true; row: IntakeRow }
   /** Тихий отказ: приманка сработала. Боту отвечаем как при успехе */
   | { ok: false; бот: true }
-  | { ok: false; бот?: false; поле: "name" | "contact" | "portfolio"; ошибка: string };
+  | {
+      ok: false;
+      бот?: false;
+      поле: "name" | "contact" | "portfolio" | "consent";
+      ошибка: string;
+    };
 
 const строка = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
@@ -101,6 +122,12 @@ export function normalizeSubmission(input: PublicSubmission): IntakeResult {
     return { ok: false, поле: "contact", ошибка: "Слишком длинный контакт" };
   }
 
+  // Галочку проверяем и здесь, на сервере: в браузере её можно обойти,
+  // отправив запрос мимо формы, а согласие — это не украшение интерфейса
+  if (input.consent !== true) {
+    return { ok: false, поле: "consent", ошибка: "Нужно согласие на обработку данных" };
+  }
+
   const raw = строка(input.portfolio);
   if (!raw) {
     return { ok: false, поле: "portfolio", ошибка: "Не указана ссылка на портфолио" };
@@ -123,6 +150,9 @@ export function normalizeSubmission(input: PublicSubmission): IntakeResult {
       grade: "MIDDLE",
       status: "NEW",
       source: PUBLIC_SOURCE,
+      manualOverrides: {
+        публичноеСогласие: { дано: new Date().toISOString(), текст: CONSENT_TEXT },
+      },
     },
   };
 }
