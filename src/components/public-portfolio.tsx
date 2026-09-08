@@ -382,8 +382,7 @@ function WaitingScreen({
     if (!id) return;
     let живо = true;
 
-    // Раз в 5 секунд: разбор идёт минуты, чаще — впустую греть сервер
-    const таймер = setInterval(async () => {
+    const спросить = async () => {
       try {
         const res = await fetch(`/api/public/portfolio/${id}`);
         if (!res.ok || !живо) return;
@@ -399,7 +398,13 @@ function WaitingScreen({
       } catch {
         // Связь могла моргнуть — молчим и пробуем на следующем круге
       }
-    }, 5000);
+    };
+
+    // Раз в 5 секунд: разбор идёт минуты, чаще — впустую греть сервер
+    const таймер = setInterval(спросить, 5000);
+    // Но первый раз — сразу: по сохранённой ссылке разбор уже может быть
+    // готов, и заставлять человека смотреть на «Смотрим» пять секунд глупо
+    void спросить();
 
     // Шаги двигаем по времени: настоящих отметок прогресса у разбора нет,
     // и выдумывать их точность не стоит — это индикатор, что не зависло
@@ -422,8 +427,7 @@ function WaitingScreen({
       <header className="hero">
         <h1 className="display">Смотрим</h1>
         <p className="lede">
-          Обычно пара минут. Страницу можно закрыть — пришлём ссылку в телеграм,
-          когда будет готово.
+          Не закрывай страницу, обычно пара минут. Разбор появится прямо здесь.
         </p>
       </header>
 
@@ -437,7 +441,51 @@ function WaitingScreen({
           </div>
         ))}
       </Card>
+
+      {id && <СсылкаНаРазбор id={id} />}
     </>
+  );
+}
+
+/**
+ * Запасной выход, если страницу всё-таки закроют.
+ *
+ * Отправки в телеграм у нас нет, и закрытая вкладка означала бы, что
+ * разбор собран, но человек его не увидит. Ссылка на свой разбор снимает
+ * эту зависимость от вкладки, ничего не обещая от нашего имени.
+ */
+function СсылкаНаРазбор({ id }: { id: string }) {
+  const [скопировано, setСкопировано] = useState(false);
+  const [ручками, setРучками] = useState(false);
+
+  const адрес =
+    typeof window !== "undefined" ? `${window.location.origin}/p/portfolio/${id}` : "";
+
+  async function копировать() {
+    try {
+      await navigator.clipboard.writeText(адрес);
+      setСкопировано(true);
+      setTimeout(() => setСкопировано(false), 3000);
+    } catch {
+      // Без https и в части браузеров буфер недоступен — показываем
+      // адрес, чтобы человек скопировал руками, а не упёрся в молчание
+      setРучками(true);
+    }
+  }
+
+  return (
+    <Card>
+      <p className="t-подпись">
+        Если всё же закроешь — по этой ссылке вернёшься к разбору. Она никуда
+        не отправляется, сохрани себе.
+      </p>
+
+      <button className="copy" onClick={копировать}>
+        {скопировано ? "Скопировано" : "Скопировать ссылку"}
+      </button>
+
+      {ручками && <p className="адрес">{адрес}</p>}
+    </Card>
   );
 }
 
@@ -560,9 +608,20 @@ function FailedScreen() {
  * означала бы, что правки в прототипе до неё не доезжают, — а мы уже
  * ловили это с опубликованной страницей, которая осталась со старым кодом.
  */
-export default function PublicPortfolio({ demo = false }: { demo?: boolean }) {
-  const [screen, setScreen] = useState<Screen>("form");
-  const [id, setId] = useState<string | null>(null);
+/**
+ * @param id — открыть сразу разбор этой заявки, минуя форму. Так работает
+ * ссылка, которую человек копирует на экране ожидания: разбор ещё идёт —
+ * досчитается здесь, готов — покажется сразу.
+ */
+export default function PublicPortfolio({
+  demo = false,
+  id: изСсылки,
+}: {
+  demo?: boolean;
+  id?: string;
+}) {
+  const [screen, setScreen] = useState<Screen>(изСсылки ? "waiting" : "form");
+  const [id, setId] = useState<string | null>(изСсылки ?? null);
   const [разбор, setРазбор] = useState<ГотовыйРазбор | null>(null);
 
   const принять = useCallback((д: ГотовыйРазбор) => {
@@ -820,6 +879,29 @@ export default function PublicPortfolio({ demo = false }: { demo?: boolean }) {
           opacity: 0;
         }
         .ошибка { margin-top: 12px; color: #d2321a; }
+
+        /* Запасная ссылка на разбор: действие второстепенное, поэтому
+           контурная кнопка, а не залитая оранжевым — она не должна
+           перетягивать внимание с самого ожидания */
+        .t-подпись { color: var(--ink-2); }
+        .copy {
+          width: 100%;
+          height: 48px;
+          margin-top: 16px;
+          border: 1px solid var(--hair);
+          border-radius: 12px;
+          background: #fff;
+          color: var(--ink);
+          font: inherit;
+          cursor: pointer;
+        }
+        .copy:active { background: #f7f5f3; }
+        .адрес {
+          margin-top: 12px;
+          color: var(--ink-2);
+          word-break: break-all;
+          user-select: all; /* тап выделяет адрес целиком */
+        }
 
         .action:disabled { background: #efece9; color: #b5b0ac; cursor: not-allowed; }
         .action:active:not(:disabled) { background: #e35f1a; }
