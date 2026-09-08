@@ -491,7 +491,7 @@ function СсылкаНаРазбор({ id }: { id: string }) {
   }
 
   return (
-    <section className="card card--invert">
+    <section className="link-block">
       <p className="t-подпись">
         Если всё же закроешь — по этой ссылке вернёшься к разбору. Она никуда
         не отправляется, сохрани себе.
@@ -962,25 +962,23 @@ export default function PublicPortfolio({
           user-select: all; /* тап выделяет адрес целиком */
         }
 
-        /* ── Вывернутая карточка ──────────────────────────────────
-           Чёрная на чёрном фоне: заливка не отделяет её от страницы,
-           поэтому границу держит тонкий контур — без него от карточки
-           остались бы висящие в пустоте строки.
-           Всё, что внутри, тоже выворачивается: белая кнопка на чёрном
-           била бы в глаза сильнее самого орба. */
-        .card--invert {
-          background: var(--bg);
-          color: #fff;
-          box-shadow: inset 0 0 0 1px #2a2a2a;
+        /* ── Запасная ссылка ──────────────────────────────────────
+           Карточки здесь больше нет: ни заливки, ни рамки — текст лежит
+           прямо на фоне страницы. Поэтому и поля свои, по краю страницы,
+           а не по краю карточки: 4 — как у сноски внизу. */
+        .link-block {
+          padding: 0 4px;
+          color: #8a8a8a;
         }
-        .card--invert .t-подпись { color: #8a8a8a; }
-        .card--invert .copy {
-          background: transparent;
-          border-color: #3a3a3a;
-          color: #fff;
+        /* Кнопка осталась единственным телом в блоке, поэтому она и
+           берёт на себя вес: белая заливка, чёрный текст */
+        .link-block .copy {
+          background: #fff;
+          border-color: transparent;
+          color: var(--ink);
         }
-        .card--invert .copy:active { background: #1a1a1a; }
-        .card--invert .адрес { color: #8a8a8a; }
+        .link-block .copy:active { background: #e8e5e2; }
+        .link-block .адрес { color: #8a8a8a; }
 
         .action:disabled { background: #efece9; color: #b5b0ac; cursor: not-allowed; }
         .action:active:not(:disabled) { background: #e35f1a; }
