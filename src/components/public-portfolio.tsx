@@ -441,35 +441,23 @@ function WaitingScreen({
     };
   }, [id, onReady, onFailed]);
 
-  const steps: [string, "done" | "now" | "wait"][] = [
-    ["Открыли портфолио", "done"],
-    ["Смотрим кейсы", этап >= 2 ? "done" : "now"],
-    ["Собираем разбор", этап >= 2 ? "now" : "wait"],
-  ];
   return (
     <>
       <header className="hero">
-        {/* Орб отмеряет, что работа идёт: шаги ниже переключаются раз в
-            двадцать секунд, и между ними страница выглядела застывшей */}
-        <div className="orb" aria-hidden="true">
-          <ThinkingOrb state="solving" size={64} theme="dark" />
-        </div>
         <h1 className="display">Смотрим</h1>
         <p className="lede">
           Не закрывай страницу, обычно пара минут. Разбор появится прямо здесь.
         </p>
       </header>
 
-      <Card>
-        {steps.map(([title, state], i) => (
-          <div className={`step ${state}`} key={title}>
-            {/* Номер шага набран крупной ступенью — она же держит ритм списка */}
-            <span className="step-n">{i + 1}</span>
-            <span className="step-t">{title}</span>
-            {state === "now" && <span className="step-s">идёт</span>}
-          </div>
-        ))}
-      </Card>
+      {/*
+       * Орб — единственное, что показывает: работа идёт. Список шагов
+       * отсюда убран, он всё равно двигался по таймеру, а не по настоящим
+       * отметкам разбора, и обещал точность, которой нет.
+       */}
+      <div className="orb" aria-hidden="true">
+        <ThinkingOrb state="solving" size={64} theme="dark" />
+      </div>
 
       {id && <СсылкаНаРазбор id={id} />}
     </>
@@ -780,9 +768,28 @@ export default function PublicPortfolio({
 
         /* Шапка экрана — самый крупный отрыв: 12 + 28 = 40 */
         .hero { margin-bottom: 28px; }
-        /* Орб стоит над заголовком, отдельной строкой: рядом с 64-м
-           кеглем он спорил бы с ним по весу */
-        .orb { margin-bottom: 20px; line-height: 0; }
+        /* Орб по центру и втрое крупнее.
+           Размер задан преобразованием, а не свойствами: у библиотеки
+           ровно два размера, 64 и 20, и это разные рисунки — число точек
+           и их размер подобраны под каждый, а не пересчитываются.
+           Поэтому берём готовые 64 и увеличиваем; место под него держим
+           высотой обёртки, иначе увеличенный орб наехал бы на соседей. */
+        .orb {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 192px;
+          margin: 8px 0 20px;
+          line-height: 0;
+        }
+        /* Увеличиваем растягиванием готового холста. Отрисовать сразу
+           крупно нельзя: у библиотеки ровно два размера, 64 и 20, а на
+           192 она молча ломается — набора под этот размер у неё нет.
+           Плата за растягивание — мягкие края точек. */
+        .orb > * {
+          transform: scale(3);
+          transform-origin: center;
+        }
         /* Имя кандидата — вторая ступень под 64-м заголовком */
         .subject {
           font-family: var(--font-lebowski), Georgia, serif;
