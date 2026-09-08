@@ -491,7 +491,7 @@ function СсылкаНаРазбор({ id }: { id: string }) {
   }
 
   return (
-    <Card>
+    <section className="card card--invert">
       <p className="t-подпись">
         Если всё же закроешь — по этой ссылке вернёшься к разбору. Она никуда
         не отправляется, сохрани себе.
@@ -502,7 +502,7 @@ function СсылкаНаРазбор({ id }: { id: string }) {
       </button>
 
       {ручками && <p className="адрес">{адрес}</p>}
-    </Card>
+    </section>
   );
 }
 
@@ -961,6 +961,26 @@ export default function PublicPortfolio({
           word-break: break-all;
           user-select: all; /* тап выделяет адрес целиком */
         }
+
+        /* ── Вывернутая карточка ──────────────────────────────────
+           Чёрная на чёрном фоне: заливка не отделяет её от страницы,
+           поэтому границу держит тонкий контур — без него от карточки
+           остались бы висящие в пустоте строки.
+           Всё, что внутри, тоже выворачивается: белая кнопка на чёрном
+           била бы в глаза сильнее самого орба. */
+        .card--invert {
+          background: var(--bg);
+          color: #fff;
+          box-shadow: inset 0 0 0 1px #2a2a2a;
+        }
+        .card--invert .t-подпись { color: #8a8a8a; }
+        .card--invert .copy {
+          background: transparent;
+          border-color: #3a3a3a;
+          color: #fff;
+        }
+        .card--invert .copy:active { background: #1a1a1a; }
+        .card--invert .адрес { color: #8a8a8a; }
 
         .action:disabled { background: #efece9; color: #b5b0ac; cursor: not-allowed; }
         .action:active:not(:disabled) { background: #e35f1a; }
