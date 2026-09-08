@@ -24,6 +24,7 @@
  */
 import localFont from "next/font/local";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { ThinkingOrb } from "thinking-orbs";
 import type { PublicResult } from "@/lib/public-result";
 
 const lebowski = localFont({
@@ -448,6 +449,11 @@ function WaitingScreen({
   return (
     <>
       <header className="hero">
+        {/* Орб отмеряет, что работа идёт: шаги ниже переключаются раз в
+            двадцать секунд, и между ними страница выглядела застывшей */}
+        <div className="orb" aria-hidden="true">
+          <ThinkingOrb state="solving" size={64} theme="dark" />
+        </div>
         <h1 className="display">Смотрим</h1>
         <p className="lede">
           Не закрывай страницу, обычно пара минут. Разбор появится прямо здесь.
@@ -774,6 +780,9 @@ export default function PublicPortfolio({
 
         /* Шапка экрана — самый крупный отрыв: 12 + 28 = 40 */
         .hero { margin-bottom: 28px; }
+        /* Орб стоит над заголовком, отдельной строкой: рядом с 64-м
+           кеглем он спорил бы с ним по весу */
+        .orb { margin-bottom: 20px; line-height: 0; }
         /* Имя кандидата — вторая ступень под 64-м заголовком */
         .subject {
           font-family: var(--font-lebowski), Georgia, serif;
