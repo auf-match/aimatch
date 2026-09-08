@@ -48,6 +48,13 @@ describe("решитьПоПути", () => {
     expect(решитьПоПути("/p/portfolio/")).toEqual({ вид: "страница" });
   });
 
+  it("пропускает ссылку на свой разбор", () => {
+    // Её человек копирует на экране ожидания — она обязана открываться
+    expect(решитьПоПути("/p/portfolio/cmtrd4yxx0000pubeovk7b96s")).toEqual({
+      вид: "пропустить",
+    });
+  });
+
   it("пропускает приём заявок и сборку", () => {
     for (const p of ["/api/public/portfolio", "/api/public/portfolio/abc", "/_next/static/a.js", "/favicon.ico"]) {
       expect(решитьПоПути(p), p).toEqual({ вид: "пропустить" });
