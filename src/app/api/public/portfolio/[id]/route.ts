@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { PUBLIC_SOURCE } from "@/lib/public-intake";
 import { toPublicResult } from "@/lib/public-result";
+import {
+  готовоеПереложение,
+  переложениеНеВышло,
+} from "@/server/services/public-rendition";
 
 /**
  * GET /api/public/portfolio/[id] — готов ли разбор заявки.
@@ -38,12 +42,21 @@ export async function GET(
     return NextResponse.json({ состояние: "не получилось" });
   }
 
-  const результат = toPublicResult(кандидат.portfolioAnalysis);
-  if (!результат) {
+  const исходный = toPublicResult(кандидат.portfolioAnalysis);
+  if (!исходный) {
     // Разбора ещё нет — значит идёт. Отдельного «в работе» в статусах нет,
     // и наличие самого разбора здесь надёжнее статуса
     return NextResponse.json({ состояние: "идёт" });
   }
+
+  // Человеку показываем переложение на «ты». Пока его нет — разбор ещё не
+  // дошёл до этого шага. Но если переложение не вышло, ждать нечего:
+  // отдаём исходный текст, он верный, просто написан в третьем лице
+  const переложенный = готовоеПереложение(кандидат.portfolioAnalysis);
+  if (!переложенный && !переложениеНеВышло(кандидат.portfolioAnalysis)) {
+    return NextResponse.json({ состояние: "идёт" });
+  }
+  const результат = переложенный ?? исходный;
 
   return NextResponse.json({
     состояние: "готово",

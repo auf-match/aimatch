@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db";
 import { normalizeSubmission } from "@/lib/public-intake";
 import { analyzeImportedCandidate } from "@/server/services/candidate-analysis";
+import { makePublicRendition } from "@/server/services/public-rendition";
 
 export const maxDuration = 60;
 
@@ -43,9 +44,11 @@ export async function POST(req: NextRequest) {
       select: { id: true },
     });
 
-    void analyzeImportedCandidate(кандидат.id).catch((err) =>
-      console.error(`[public] разбор ${кандидат.id} упал:`, err),
-    );
+    // Разбор, а следом переложение на «ты» — страница ждёт именно его
+    void (async () => {
+      await analyzeImportedCandidate(кандидат.id);
+      await makePublicRendition(кандидат.id);
+    })().catch((err) => console.error(`[public] разбор ${кандидат.id} упал:`, err));
 
     return NextResponse.json({ ok: true, id: кандидат.id });
   } catch (e) {
