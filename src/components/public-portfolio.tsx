@@ -311,7 +311,9 @@ function FormScreen({ onSubmit }: { onSubmit: (id: string) => void }) {
   const fields: [string, string, string, (v: string) => void, string][] = [
     ["Имя", name, "Как тебя зовут", setName, "text"],
     ["Телеграм или почта", contact, "@nickname", setContact, "text"],
-    ["Ссылка на портфолио", link, "behance.net/…", setLink, "url"],
+    // Плейсхолдер отвечает на вопрос «а мою площадку примут?», а не
+    // показывает формат ссылки: формат и так очевиден из названия поля
+    ["Ссылка на портфолио", link, "Notion, Figma или свой сайт", setLink, "url"],
   ];
 
   return (
