@@ -313,7 +313,7 @@ function FormScreen({ onSubmit }: { onSubmit: (id: string) => void }) {
     ["Телеграм или почта", contact, "@nickname", setContact, "text"],
     // Плейсхолдер отвечает на вопрос «а мою площадку примут?», а не
     // показывает формат ссылки: формат и так очевиден из названия поля
-    ["Ссылка на портфолио", link, "Notion, Figma или свой сайт", setLink, "url"],
+    ["Ссылка на портфолио", link, "Любой ресурс", setLink, "url"],
   ];
 
   return (
