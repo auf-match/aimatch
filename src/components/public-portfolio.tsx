@@ -26,6 +26,7 @@ import localFont from "next/font/local";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 import type { PublicResult } from "@/lib/public-result";
+import { прочитатьРазбор, запомнитьРазбор } from "@/lib/saved-analysis";
 
 const lebowski = localFont({
   src: "../app/fonts/Lebowski-Regular.ttf",
@@ -276,6 +277,16 @@ function FormScreen({ onSubmit }: { onSubmit: (id: string) => void }) {
   const [ошибка, setОшибка] = useState<string | null>(null);
   // Поле-приманка: людям не видно, боты заполняют
   const [website, setWebsite] = useState("");
+  /**
+   * Заявка, отправленная с этого браузера раньше. Читаем только после
+   * отрисовки: на сервере хранилища нет, и обращение к нему при первой
+   * отрисовке разошлось бы с разметкой сервера.
+   */
+  const [прошлый, setПрошлый] = useState<string | null>(null);
+  useEffect(() => {
+    setПрошлый(прочитатьРазбор(window.localStorage)?.id ?? null);
+  }, []);
+
   const ready =
     Boolean(name.trim() && contact.trim() && link.trim()) && согласие && !шлём;
 
@@ -299,6 +310,9 @@ function FormScreen({ onSubmit }: { onSubmit: (id: string) => void }) {
         setОшибка(данные.error || "Не удалось отправить. Попробуй ещё раз");
         return;
       }
+      // Запоминаем сразу: дальше человек может закрыть вкладку в любой
+      // момент, и это единственный способ вернуть ему разбор
+      запомнитьРазбор(window.localStorage, данные.id);
       onSubmit(данные.id);
     } catch {
       // Сеть отвалилась — человеку важно знать, что дело не в нём
@@ -325,6 +339,12 @@ function FormScreen({ onSubmit }: { onSubmit: (id: string) => void }) {
           показываем то, что тебе никто не озвучит. Здесь это можно прочитать.
         </p>
       </header>
+
+      {прошлый && (
+        <a className="back" href={`/p/portfolio/${прошлый}`}>
+          Открыть прошлый разбор
+        </a>
+      )}
 
       <Card>
         {fields.map(([label, value, placeholder, set, type], i) => (
@@ -642,6 +662,12 @@ export default function PublicPortfolio({
   const [screen, setScreen] = useState<Screen>(изСсылки ? "waiting" : "form");
   const [id, setId] = useState<string | null>(изСсылки ?? null);
   const [разбор, setРазбор] = useState<ГотовыйРазбор | null>(null);
+
+  // Пришли по ссылке — запоминаем и здесь: человек мог открыть её на
+  // другом устройстве или после чистки памяти браузера
+  useEffect(() => {
+    if (изСсылки) запомнитьРазбор(window.localStorage, изСсылки);
+  }, [изСсылки]);
 
   const принять = useCallback((д: ГотовыйРазбор) => {
     setРазбор(д);
@@ -983,6 +1009,20 @@ export default function PublicPortfolio({
 
         .action:disabled { background: #efece9; color: #b5b0ac; cursor: not-allowed; }
         .action:active:not(:disabled) { background: #e35f1a; }
+
+        /* Путь назад к своему разбору. Появляется только у того, кто уже
+           отправлял заявку с этого браузера, поэтому выглядит скромно —
+           основное действие на экране всё-таки форма */
+        .back {
+          display: block;
+          padding: 14px 16px;
+          border: 1px solid #2a2a2a;
+          border-radius: 12px;
+          color: #fff;
+          text-decoration: none;
+          text-align: center;
+        }
+        .back:active { background: #1a1a1a; }
 
         /* Сноска — не часть последнего раздела, поэтому 12 + 12 = 24 */
         .fineprint {
