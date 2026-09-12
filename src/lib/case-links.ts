@@ -20,11 +20,18 @@ export interface LinkCandidate {
 
 // Служебные/не-кейсовые страницы — по сегменту пути или тексту ссылки.
 const UTILITY =
-  /(^|[/\-_ ])(about(-me|-us)?|bio|contacts?|home|index|resume|cv|blog|news|feed|pricing|prices?|login|log-in|sign-?in|sign-?up|register|privacy|terms|imprint|legal|cookies?|search|tags?|category|categories|archive|shop|store|cart|checkout|faq|services?|team|clients?|testimonials?|subscribe|newsletter)([/\-_ .?]|$)/i;
+  /(^|[/\-_ ])(about(-me|-us)?|bio|contacts?|home|index|resume|cv|blog|news|feed|pricing|prices?|login|log-in|sign-?in|sign-?up|register|privacy|terms|imprint|legal|cookies?|search|tags?|category|categories|archive|shop|store|cart|checkout|faq|services?|team|clients?|testimonials?|subscribe|newsletter|products?|features?|download|help|support|docs?|documentation|careers?|jobs|hiring|hire|enterprise|solutions|plans|upgrade|billing|account|settings|explore|discover|trending|following|followers|notifications|messages|assets?)([/\-_ .?]|$)/i;
 
 // Файлы-ассеты — не страницы кейсов.
 const ASSET_EXT =
   /\.(pdf|zip|rar|7z|png|jpe?g|gif|svg|webp|avif|mp4|mov|webm|doc|docx|ppt|pptx|xls|xlsx)(\?|#|$)/i;
+
+// Агрегаты и служебные разделы площадок. Бьют раньше маркеров кейса:
+// у dprofile «/cases/recommended» — это ЧУЖИЕ рекомендованные работы, но
+// в пути есть «cases», и обычная проверка считала страницу кейсом.
+// Behance так же подсовывал «How to Get Hired on Behance» и поиск по сайту.
+const HARD_STOP =
+  /\/(recommended|popular|trending|explore|discover|following|followers|collections?|slices|likes?|feed|search|users|people|jobs?|hir\w*|education|registration|sign-?up|joblist)(\/|$)/i;
 
 // Явные маркеры кейса в пути (личные сайты + Behance/Dribbble).
 const CASE_PATH =
@@ -57,6 +64,21 @@ function normalizeForDedup(href: string): string {
   }
 }
 
+/**
+ * До какой длины подпись ссылки считается служебной меткой.
+ *
+ * Стоп-лист по тексту нужен площадкам вроде Notion, где путь — хеш, а
+ * подпись говорит «About». Но те же слова — team, product, feature,
+ * service, solution — обычные в названиях кейсов, и на длинных подписях
+ * проверка выбрасывала именно сильные работы: «Team Restructuring»,
+ * «From one-week planning to product thinking», «AI-powered feature for
+ * Whiteboard» — три кейса из четырёх на одном портфолио.
+ *
+ * Служебная метка коротка по природе: «About», «Contact», «Privacy
+ * policy». Описательное название кейса — длиннее.
+ */
+const МАКС_ДЛИНА_СЛУЖЕБНОЙ_ПОДПИСИ = 24;
+
 function scoreLink(c: LinkCandidate, basePath: string): number {
   let url: URL;
   try {
@@ -67,7 +89,12 @@ function scoreLink(c: LinkCandidate, basePath: string): number {
   const path = url.pathname;
   const seg = lastSegment(path);
   const text = (c.text || "").trim();
-  const utilityHit = UTILITY.test(path) || UTILITY.test(text);
+  // Раньше маркеров кейса: агрегат остаётся агрегатом, даже если в пути «cases»
+  if (HARD_STOP.test(path)) return Number.NEGATIVE_INFINITY;
+
+  const utilityHit =
+    UTILITY.test(path) ||
+    (text.length <= МАКС_ДЛИНА_СЛУЖЕБНОЙ_ПОДПИСИ && UTILITY.test(text));
   const caseHit = CASE_PATH.test(path);
 
   // Служебная страница без явных признаков кейса — выкидываем жёстко.
@@ -116,6 +143,12 @@ export function selectCaseLinks(
       return; // невалидный URL
     }
     if (path === basePath) return; // ссылка на текущую страницу
+    // Корень сайта — это главная площадки, а не кейс. На buildin.ai она
+    // проезжала в отбор и приносила 12 кадров рекламы сервиса под видом
+    // работы кандидата.
+    if (path === "/") return;
+    // Битый href вида «/https://buildin.ai» — не страница вовсе
+    if (/^\/https?:/i.test(path)) return;
     const key = normalizeForDedup(c.href);
     if (seen.has(key)) return;
     seen.add(key);
