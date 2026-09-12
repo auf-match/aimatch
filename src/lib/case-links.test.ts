@@ -154,6 +154,32 @@ describe("selectCaseLinks", () => {
     ]);
   });
 
+  it("не выбрасывает кейсы из-за обычных слов в названии", () => {
+    // Настоящий случай: портфолио на Framer, три кейса из четырёх
+    // терялись из-за слов team, product и feature в подписях ссылок
+    const base = "https://slavalukin.framer.website/";
+    const links = [
+      mk(`${base}lead-case`, "1+2 -> 5Team Restructuring: Growing from 3 to 5 Designers"),
+      mk(`${base}process`, "The process that makes designers stronger"),
+      mk(`${base}mind-case`, "MindboxFrom one-week planning to product thinking"),
+      mk(`${base}autodraw`, "AutodrawAI-powered feature for Whiteboard"),
+    ];
+    const out = selectCaseLinks(links, base, 8);
+    expect(out).toHaveLength(4);
+  });
+
+  it("короткую служебную подпись по-прежнему отбрасывает", () => {
+    // Ради этого проверка по тексту и заведена: у Notion путь — хеш,
+    // и понять служебную страницу можно только по подписи
+    const base = "https://jane.notion.site/";
+    const links = [
+      mk(`${base}a1b2c3d4e5f6a1b2c3d4e5f6`, "About"),
+      mk(`${base}f6e5d4c3b2a1f6e5d4c3b2a1`, "Fintech redesign for a bank"),
+    ];
+    const out = selectCaseLinks(links, base, 8);
+    expect(out).toEqual([`${base}f6e5d4c3b2a1f6e5d4c3b2a1`]);
+  });
+
   it("пустой вход → пустой выход", () => {
     expect(selectCaseLinks([], "https://jane.design/", 5)).toEqual([]);
   });

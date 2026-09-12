@@ -1,5 +1,6 @@
 import { chromium, type Browser } from "playwright";
 import { isFigmaUrl, scrapeFigma, FigmaScraperError } from "./figma-scraper";
+import { выбратьЗаголовокКейса } from "@/lib/case-title";
 import { selectCaseLinks, type LinkCandidate } from "@/lib/case-links";
 import { thinCaseIndexes, type ScreenshotMeta } from "@/lib/screenshot-select";
 import { downloadImages, findPageImages } from "./portfolio-images";
@@ -502,10 +503,15 @@ async function scrapeOnce(url: string): Promise<ScrapeResult> {
     }
 
     // Умный отбор кейсов: отсекаем служебные страницы (About/Contacts),
-    // ранжируем «похожее на кейс», берём топ-5 (раньше — первые 3 в DOM-порядке,
-    // из-за чего сильные кейсы ниже по странице терялись).
+    // ранжируем «похожее на кейс», берём топ-8 (раньше было 5, а до того —
+    // первые 3 в DOM-порядке, из-за чего сильные кейсы ниже по странице
+    // терялись). Каждая лишняя страница — ещё десяток секунд разбора, но
+    // упущенный кейс дороже: по нему человека и оценивают.
     let caseStudyText = "";
-    const caseLinks = selectCaseLinks(candidates, url, 5);
+    const caseLinks = selectCaseLinks(candidates, url, 8);
+
+    // Подписи ссылок с главной — запасной источник названия кейса
+    const подписиСсылок = new Map(candidates.map((c) => [c.href, c.text]));
 
     let caseNumber = 0;
     for (const caseUrl of caseLinks) {
@@ -532,12 +538,19 @@ async function scrapeOnce(url: string): Promise<ScrapeResult> {
         // («Buildin — Your AI Workspace»), а кадр снимался один.
         await waitForContent(page, 10000);
 
-        // Заголовок кейса — уходит в подпись кадра для модели.
-        // Убираем хвост площадки: «Название :: Behance», «Название | Dribbble».
-        const caseTitle = (await page.title().catch(() => ""))
-          .replace(/\s*(::|[|–—-])\s*(Behance|Dribbble|Notion|Figma).*$/i, "")
-          .trim()
-          .slice(0, 80);
+        // Заголовок кейса — уходит в подпись кадра для модели. Берём из
+        // нескольких источников: на конструкторах заголовок вкладки один
+        // на весь сайт, и кейсы приезжали под именем автора, неотличимые
+        // друг от друга. Правила и порядок — в @/lib/case-title.
+        const caseH1 = await page
+          .evaluate(() => document.querySelector("h1")?.textContent ?? "")
+          .catch(() => "");
+        const caseTitle = выбратьЗаголовокКейса({
+          h1: caseH1,
+          title: await page.title().catch(() => ""),
+          linkText: подписиСсылок.get(caseUrl),
+          siteTitle: title,
+        });
 
         // Scroll through the full case study page — this is where the real portfolio work is
         const caseArea = await findScrollArea(page);

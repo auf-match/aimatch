@@ -64,6 +64,21 @@ function normalizeForDedup(href: string): string {
   }
 }
 
+/**
+ * До какой длины подпись ссылки считается служебной меткой.
+ *
+ * Стоп-лист по тексту нужен площадкам вроде Notion, где путь — хеш, а
+ * подпись говорит «About». Но те же слова — team, product, feature,
+ * service, solution — обычные в названиях кейсов, и на длинных подписях
+ * проверка выбрасывала именно сильные работы: «Team Restructuring»,
+ * «From one-week planning to product thinking», «AI-powered feature for
+ * Whiteboard» — три кейса из четырёх на одном портфолио.
+ *
+ * Служебная метка коротка по природе: «About», «Contact», «Privacy
+ * policy». Описательное название кейса — длиннее.
+ */
+const МАКС_ДЛИНА_СЛУЖЕБНОЙ_ПОДПИСИ = 24;
+
 function scoreLink(c: LinkCandidate, basePath: string): number {
   let url: URL;
   try {
@@ -77,7 +92,9 @@ function scoreLink(c: LinkCandidate, basePath: string): number {
   // Раньше маркеров кейса: агрегат остаётся агрегатом, даже если в пути «cases»
   if (HARD_STOP.test(path)) return Number.NEGATIVE_INFINITY;
 
-  const utilityHit = UTILITY.test(path) || UTILITY.test(text);
+  const utilityHit =
+    UTILITY.test(path) ||
+    (text.length <= МАКС_ДЛИНА_СЛУЖЕБНОЙ_ПОДПИСИ && UTILITY.test(text));
   const caseHit = CASE_PATH.test(path);
 
   // Служебная страница без явных признаков кейса — выкидываем жёстко.
