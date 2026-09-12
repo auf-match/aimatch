@@ -26,7 +26,7 @@ import localFont from "next/font/local";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ThinkingOrb } from "thinking-orbs";
 import type { PublicResult } from "@/lib/public-result";
-import { прочитатьРазбор, запомнитьРазбор } from "@/lib/saved-analysis";
+import { прочитатьРазбор, запомнитьРазбор, забытьРазбор } from "@/lib/saved-analysis";
 import { обрезатьПоСловам } from "@/lib/trim-text";
 
 /**
@@ -103,14 +103,12 @@ const ОБРАЗЕЦ: ГотовыйРазбор = {
 /**
  * Белая карточка на чёрном — единственный контейнер на странице.
  *
- * full — карточка во весь экран. Высоту берём в dvh: это видимая область
- * С УЧЁТОМ свернувшейся адресной строки. Старый vh считал по развёрнутому
- * состоянию, и низ карточки уезжал под панель Safari. Мерить через JS не
- * нужно — значение пришлось бы пересчитывать на поворот, на клавиатуру и
- * на скролл, и до первой отрисовки его нет.
+ * Карточки колоды сюда не ходят: у них своя разметка с классом
+ * card--full, потому что им нужны ещё и подпорка с абсолютным
+ * положением. Здесь остались обычные карточки разбора.
  */
-function Card({ children, full }: { children: React.ReactNode; full?: boolean }) {
-  return <section className={full ? "card card--full" : "card"}>{children}</section>;
+function Card({ children }: { children: React.ReactNode }) {
+  return <section className="card">{children}</section>;
 }
 
 /**
@@ -446,7 +444,6 @@ function WaitingScreen({
   onReady?: (д: ГотовыйРазбор) => void;
   onFailed?: () => void;
 }) {
-  const [этап, setЭтап] = useState(1);
 
   useEffect(() => {
     if (!id) return;
@@ -476,14 +473,9 @@ function WaitingScreen({
     // готов, и заставлять человека смотреть на «Смотрим» пять секунд глупо
     void спросить();
 
-    // Шаги двигаем по времени: настоящих отметок прогресса у разбора нет,
-    // и выдумывать их точность не стоит — это индикатор, что не зависло
-    const шаги = setTimeout(() => живо && setЭтап(2), 20000);
-
     return () => {
       живо = false;
       clearInterval(таймер);
-      clearTimeout(шаги);
     };
   }, [id, onReady, onFailed]);
 
@@ -646,16 +638,31 @@ function краткийАдрес(url: string): string {
 
 // ── Экран: не получилось ─────────────────────────────────────────────
 
-function FailedScreen() {
+function FailedScreen({ onRetry }: { onRetry: () => void }) {
   return (
     <>
       <header className="hero">
         <h1 className="display">Не вышло</h1>
         <p className="lede">
-          Не удалось открыть портфолио — бывает, если страница закрыта паролем
-          или ссылка ведёт не туда. Напишем в телеграм, если разберёмся.
+          Не удалось открыть портфолио. Так бывает, если страница закрыта
+          паролем, требует входа или ссылка ведёт не туда. Проверь ссылку и
+          попробуй ещё раз.
         </p>
       </header>
+
+      <div className="link-block">
+        <button className="copy" onClick={onRetry}>
+          Пройти ещё раз
+        </button>
+      </div>
+
+      <p className="fineprint">
+        Если со ссылкой всё в порядке — напиши в телеграм{" "}
+        <a className="tg" href="https://t.me/lukinslava" target="_blank" rel="noreferrer">
+          @lukinslava
+        </a>
+        , разберёмся руками.
+      </p>
     </>
   );
 }
@@ -698,7 +705,20 @@ export default function PublicPortfolio({
     setРазбор(д);
     setScreen("result");
   }, []);
-  const неВышло = useCallback(() => setScreen("failed"), []);
+  const неВышло = useCallback(() => {
+    // Ссылку на неудавшийся разбор забываем: иначе форма вечно предлагала
+    // бы «Открыть прошлый разбор», ведущий в тот же тупик
+    забытьРазбор(window.localStorage);
+    setScreen("failed");
+  }, []);
+
+  const заново = useCallback(() => {
+    // Состояние формы сбрасывается само: при смене экрана она снимается
+    // с дерева и монтируется заново пустой
+    setId(null);
+    setРазбор(null);
+    setScreen("form");
+  }, []);
 
   // В прототипе показываем придуманный разбор: настоящего там взяться
   // неоткуда, а посмотреть на вёрстку экрана нужно
@@ -719,7 +739,7 @@ export default function PublicPortfolio({
           <WaitingScreen id={id ?? undefined} onReady={принять} onFailed={неВышло} />
         )}
         {screen === "result" && кПоказу && <ResultScreen данные={кПоказу} />}
-        {screen === "failed" && <FailedScreen />}
+        {screen === "failed" && <FailedScreen onRetry={заново} />}
       </main>
 
       {demo && (
@@ -1055,6 +1075,10 @@ export default function PublicPortfolio({
         .link-block .copy:active { background: #e8e5e2; }
         .link-block .адрес { color: #8a8a8a; }
 
+        /* Ссылка на телеграм в сноске: оранжевая, как всё нажимаемое */
+        .tg { color: var(--accent); text-decoration: none; }
+        .tg:active { opacity: 0.7; }
+
         .action:disabled { background: #efece9; color: #b5b0ac; cursor: not-allowed; }
         .action:active:not(:disabled) { background: #e35f1a; }
 
@@ -1078,27 +1102,6 @@ export default function PublicPortfolio({
           color: #6f6f6f;
         }
 
-        /* Ожидание: номер шага — средняя ступень */
-        .step {
-          display: flex;
-          align-items: baseline;
-          gap: 16px;
-          padding: 14px 0;
-        }
-        .step + .step { border-top: 1px solid var(--hair); }
-        .step-n {
-          font-family: var(--font-lebowski), Georgia, serif;
-          font-size: 32px;
-          line-height: 1;
-          color: var(--hair);
-          width: 32px;
-          flex-shrink: 0;
-        }
-        .step.now .step-n { color: var(--accent); }
-        .step.done .step-n { color: var(--ink); }
-        .step-t { flex: 1; }
-        .step.wait .step-t { color: var(--ink-2); }
-        .step-s { color: var(--accent); }
 
         /* Результат */
         .pull { margin: 0; }
